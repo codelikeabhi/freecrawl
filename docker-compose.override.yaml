@@ -1,0 +1,36 @@
+# Fork overrides, merged over docker-compose.yaml automatically by `docker compose`.
+# Why each change exists: docs/fork/RECON.md section 4. Keep base-file diffs at zero.
+
+services:
+  # ponytail: caps sized for a 16 GB Docker VM shared with a k3d cluster (~7 GB).
+  # Base asks 8g / 4g. Raise if `docker stats` shows them pinned at the cap.
+  api:
+    mem_limit: 6g
+    memswap_limit: 6g
+  playwright-service:
+    mem_limit: 3g
+    memswap_limit: 3g
+
+  # Named volumes so data survives `docker compose down` / container replacement.
+  nuq-postgres:
+    volumes:
+      - nuq-postgres-data:/var/lib/postgresql/data
+  redis:
+    volumes:
+      - redis-data:/data
+  rabbitmq:
+    # RabbitMQ names its data dir after the hostname; pin it so the volume is reused.
+    hostname: rabbitmq
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+
+  # Default queue is NuQ Postgres; FoundationDB only runs with `--profile fdb`.
+  foundationdb:
+    profiles: [fdb]
+  foundationdb-init:
+    profiles: [fdb]
+
+volumes:
+  nuq-postgres-data:
+  redis-data:
+  rabbitmq-data:

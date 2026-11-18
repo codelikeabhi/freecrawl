@@ -19,3 +19,11 @@ When making changes to the API, here are the general steps you should take:
 Keep these steps in mind while building your TODO list.
 
 Never bypass `knip` failures (e.g. with `git commit --no-verify`). If the pre-commit `knip` check fails, fix the reported unused exports/files — even if they predate your change — before committing.
+
+## Fork rules
+
+This checkout is a private self-hosted fork. Plan and notes: `PLAN.md`, `docs/fork/`.
+
+- For web scraping, use the `firecrawl-local` MCP server (our API at http://localhost:3002). If a cloud Firecrawl connector from claude.ai is also loaded (tools like `mcp__claude_ai_Firecrawl__*`), do not use it unless the owner asks, because it spends paid credits.
+- `firecrawl-local` also lists Cloud-only tools (agent, interact, monitor, research papers). They fail against the local API; do not use them.
+- When a page is blocked, follow the `web-fetch-ladder` skill (`.claude/skills/web-fetch-ladder/`, added in Phase 7 of `PLAN.md`).

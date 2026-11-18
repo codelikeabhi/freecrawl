@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "firecrawl-local": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "firecrawl-mcp@3.33.2"],
+      "env": { "FIRECRAWL_API_URL": "http://localhost:3002" }
+    }
+  }
+}
