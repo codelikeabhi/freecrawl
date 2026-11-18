@@ -1,0 +1,30 @@
+# SearXNG for the local Firecrawl API (PLAN.md Phase 3). Private instance on the
+# Docker backend network only. The secret comes from SEARXNG_SECRET in .env.
+use_default_settings: true
+
+server:
+  limiter: false          # bot detection only runs with the limiter; nobody else can reach this instance
+  public_instance: false
+  image_proxy: false
+
+search:
+  formats: [html, json]   # JSON is off by default and returns 403
+
+engines:
+  # General web: on this home IP (2026-11-18) google cse answered reliably, duckduckgo
+  # showed a CAPTCHA and brave rate-limited. bing and mwmbl answered, so enable them
+  # as backups. google stays disabled (access denied); a CAPTCHA suspends an engine for 1 h.
+  - name: bing
+    disabled: false
+  - name: mwmbl
+    disabled: false
+  - name: mojeek          # independent index; honors site: when google cse is rate-limited
+    inactive: false
+    disabled: false
+  # Research and package engines that ship disabled.
+  - name: openalex
+    disabled: false
+  - name: crossref
+    disabled: false
+  - name: npm
+    disabled: false

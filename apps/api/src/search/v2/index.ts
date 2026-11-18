@@ -7,6 +7,37 @@ import { Logger } from "winston";
 import { UsOnlyUnavailableError } from "../../scraper/scrapeURL/error";
 import type { TeamPlanClass } from "../../lib/team-plan-class";
 
+// fork: the self-hosted backends below only get include/excludeDomains as a
+// `site:` hint, which many engines ignore. Enforce them on the returned URLs.
+function keepDomains(
+  res: SearchV2Response,
+  include?: string[],
+  exclude?: string[],
+): SearchV2Response {
+  if (!include?.length && !exclude?.length) return res;
+  const matches = (host: string, domain: string) => {
+    const d = domain.toLowerCase().replace(/^www\./, "");
+    return host === d || host.endsWith("." + d);
+  };
+  const allowed = (url?: string) => {
+    try {
+      const host = new URL(url ?? "").hostname.toLowerCase();
+      return (
+        (!include?.length || include.some(d => matches(host, d))) &&
+        !exclude?.some(d => matches(host, d))
+      );
+    } catch {
+      return false;
+    }
+  };
+  return {
+    ...res,
+    ...(res.web ? { web: res.web.filter(r => allowed(r.url)) } : {}),
+    ...(res.news ? { news: res.news.filter(r => allowed(r.url)) } : {}),
+    ...(res.images ? { images: res.images.filter(r => allowed(r.url)) } : {}),
+  };
+}
+
 export async function search({
   query,
   logger,
@@ -80,31 +111,41 @@ export async function search({
       return results;
     }
 
-    // includeDomains/excludeDomains are enforced on returned URLs only on
-    // the fire engine path above; the fallback providers below receive them
-    // solely as the site: chain baked into the query.
+    // includeDomains/excludeDomains reach the fallback providers below as the
+    // site: chain baked into the query; fork: keepDomains also enforces them
+    // on the returned URLs.
     if (config.SEARXNG_ENDPOINT) {
       logger.info("Using searxng search");
-      const results = await searxng_search(query, {
-        num_results,
-        tbs,
-        filter,
-        lang,
-        country,
-        location,
-        safe,
-      });
-      if (results.web && results.web.length > 0) return results;
+      const results = keepDomains(
+        await searxng_search(query, {
+          num_results,
+          tbs,
+          filter,
+          lang,
+          country,
+          location,
+          safe,
+          type, // fork: news and images come from SearXNG's categories
+        }),
+        includeDomains,
+        excludeDomains,
+      );
+      if (results.web?.length || results.news?.length || results.images?.length)
+        return results;
     }
 
     logger.info("Using DuckDuckGo search");
-    const ddgResults = await ddgSearch(query, num_results, {
-      tbs,
-      lang,
-      country,
-      proxy,
-      timeout,
-    });
+    const ddgResults = keepDomains(
+      await ddgSearch(query, num_results, {
+        tbs,
+        lang,
+        country,
+        proxy,
+        timeout,
+      }),
+      includeDomains,
+      excludeDomains,
+    );
     if (ddgResults.web && ddgResults.web.length > 0) return ddgResults;
 
     // Fallback to empty response

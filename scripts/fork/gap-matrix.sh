@@ -128,4 +128,22 @@ if [[ parse.upload =~ $FILTER ]]; then
   printf '%-30s %-4s %-4s %s\n' parse.upload "$http" "$res" "$(note "$resp")"
 fi
 
+# Three-step flow: ask for an upload URL, PUT the file, parse by reference.
+if [[ parse.upload-url =~ $FILTER ]]; then
+  f="$OUT/sample-ref.html"; printf '<html><body><h1>Upload ref works</h1></body></html>' >"$f"
+  ref=$(curl -sS --max-time 30 -X POST "$API/v2/parse/upload-url" -H 'Content-Type: application/json' \
+    -d '{"filename":"sample-ref.html","contentType":"text/html"}')
+  up=$(jq -r '.data.uploadUrl // empty' <<<"$ref" 2>/dev/null)
+  resp=$ref http=n/a res=FAIL
+  if [[ -n $up ]]; then
+    curl -sS --max-time 30 -o /dev/null -X PUT "$up" -H 'Content-Type: text/html' --data-binary "@$f"
+    resp=$(curl -sS --max-time 120 -w $'\n%{http_code}' -X POST "$API/v2/parse" -H 'Content-Type: application/json' \
+      -d "{\"uploadRef\":\"$(jq -r '.data.uploadRef' <<<"$ref")\"}")
+    http=${resp##*$'\n'}; resp=${resp%$'\n'*}
+    [[ $(jq -r '.data.markdown|test("Upload ref works")' <<<"$resp" 2>/dev/null) == true ]] && res=OK
+  fi
+  printf '%s\n' "$resp" >"$OUT/parse.upload-url.json"
+  printf '%-30s %-4s %-4s %s\n' parse.upload-url "$http" "$res" "$(note "$resp")"
+fi
+
 echo "raw responses: $OUT"

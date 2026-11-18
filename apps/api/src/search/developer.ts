@@ -7,6 +7,7 @@ import {
   UsOnlyUpstreamRefusalError,
 } from "../lib/research-upstream";
 import { hasCategory, type CategoryOption } from "../lib/search-query-builder";
+import { searxngCategoryFallback } from "./v2/searxng";
 
 const DEVELOPER_QUERY_KEYS = ["query", "k"];
 
@@ -40,7 +41,12 @@ export async function searchDeveloperCategory(
       timeoutMs: options.timeout,
     });
     if (upstream === null) {
-      return [];
+      // fork: no Cloud developer index configured; approximate with SearXNG.
+      return await searxngCategoryFallback(
+        "developer",
+        options.query,
+        options.limit,
+      );
     }
     if (options.usOnly && upstream.status >= 400 && upstream.status < 500) {
       throw await usOnlyUpstreamRefusal(

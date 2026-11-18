@@ -16,6 +16,7 @@ import {
   resolveRedirects,
 } from "./validateUrl";
 import { fireEngineMap } from "../search/fireEngine";
+import { startPageLinks } from "./fork-map-links";
 import { isUsOnly } from "./us-only";
 import { redisEvictConnection } from "../services/redis";
 import {
@@ -324,6 +325,13 @@ export async function getMapResults({
           title: x.title,
           description: x.description,
         })),
+      );
+    }
+
+    // fork: last-resort discovery when sitemap and search found too little.
+    if (!indexOnly && mapResults.length < limit) {
+      mapResults = mapResults.concat(
+        await startPageLinks(id, url, { teamId, orgId, zeroDataRetention }),
       );
     }
 

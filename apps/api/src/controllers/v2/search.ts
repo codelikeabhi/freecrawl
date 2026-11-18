@@ -722,10 +722,21 @@ async function searchControllerInner(
         result.response.tools,
       );
     }
+    // fork: self-hosted backends (SearXNG, DuckDuckGo) swallow their errors,
+    // so an empty answer would otherwise look like a clean success.
+    const selfHostedEmpty =
+      !config.FIRE_ENGINE_BETA_URL &&
+      !result.response.web?.length &&
+      !result.response.news?.length &&
+      !result.response.images?.length &&
+      !result.response.tools?.length
+        ? "No search results. On this self-hosted deployment that can also mean the search engines behind SearXNG are rate-limited or blocked; check `docker compose logs searxng`."
+        : undefined;
     const warning = [
       usOnlyImagesWarning,
       result.usOnlyWarning,
       result.toolsWarning,
+      selfHostedEmpty,
     ]
       .filter(Boolean)
       .join(" ");

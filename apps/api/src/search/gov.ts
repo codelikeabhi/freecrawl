@@ -11,6 +11,7 @@ import {
 } from "../lib/research-upstream";
 import { logger as rootLogger } from "../lib/logger";
 import { hasCategory, type CategoryOption } from "../lib/search-query-builder";
+import { searxngCategoryFallback } from "./v2/searxng";
 
 /**
  * The longest a routed search waits for the search platform before falling
@@ -89,7 +90,8 @@ export async function searchGovCategory(
       timeoutMs: options.timeout,
     });
     if (upstream === null) {
-      return [];
+      // fork: no Cloud gov index configured; approximate with SearXNG.
+      return await searxngCategoryFallback("gov", options.query, options.limit);
     }
     if (options.usOnly && upstream.status >= 400 && upstream.status < 500) {
       throw await usOnlyUpstreamRefusal(

@@ -7,6 +7,12 @@ services:
   api:
     mem_limit: 6g
     memswap_limit: 6g
+    environment:
+      # Not in the base x-common-env list, so .env alone would not reach the API.
+      PARSE_UPLOAD_REF_SECRET: ${PARSE_UPLOAD_REF_SECRET:-}
+    depends_on:
+      searxng:
+        condition: service_started
   playwright-service:
     mem_limit: 3g
     memswap_limit: 3g
@@ -23,6 +29,23 @@ services:
     hostname: rabbitmq
     volumes:
       - rabbitmq-data:/var/lib/rabbitmq
+
+  # Search backend (PLAN.md Phase 3). Backend network only, never published.
+  searxng:
+    image: searxng/searxng:2026.10.30-ffa88e3ba
+    environment:
+      SEARXNG_SECRET: ${SEARXNG_SECRET:?set SEARXNG_SECRET in .env}
+    volumes:
+      - ./fork/searxng/settings.yml:/etc/searxng/settings.yml:ro
+    networks:
+      - backend
+    mem_limit: 512m
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
 
   # Default queue is NuQ Postgres; FoundationDB only runs with `--profile fdb`.
   foundationdb:

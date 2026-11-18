@@ -3,6 +3,7 @@ import { SearchResult } from "../../src/lib/entities";
 import { logger } from "../lib/logger";
 import { executeWithRetry, attemptRequest } from "../lib/retry-utils";
 import { useFireEngine } from "../scraper/scrapeURL/engines/fire-engine/available";
+import { searxngMapResults } from "./v2/searxng";
 
 function hasResults(results: unknown): results is SearchResult[] {
   return Array.isArray(results) && results.length > 0;
@@ -65,6 +66,13 @@ export async function fireEngineMap(
   abort?: AbortSignal,
 ): Promise<SearchResult[]> {
   if (!useFireEngine) {
+    // fork: without Fire-engine, discover a site's pages through SearXNG.
+    if (config.SEARXNG_ENDPOINT) {
+      // ponytail: one call already reads up to numResults (100) across SearXNG
+      // pages; deeper map pages would re-ask the same engines and invite rate limits.
+      if ((options.page ?? 1) > 1) return [];
+      return await searxngMapResults(q, options.numResults);
+    }
     logger.warn(
       "(v1/map Beta) Results might differ from cloud offering currently.",
     );
