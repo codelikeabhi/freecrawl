@@ -2,9 +2,11 @@
 # Why each change exists: docs/fork/RECON.md section 4. Keep base-file diffs at zero.
 
 services:
-  # ponytail: caps sized for a 16 GB Docker VM shared with a k3d cluster (~7 GB).
-  # Base asks 8g / 4g. Raise if `docker stats` shows them pinned at the cap.
+  # ponytail: caps sized for a 12 GB Docker VM (D2: lowered from 16 GB so the
+  # host keeps room for the Ollama model) shared with a k3d cluster. Base asks
+  # 8g / 4g. Raise if `docker stats` shows them pinned at the cap.
   api:
+    restart: unless-stopped  # owner: auto-start with Docker (2026-11-21)
     mem_limit: 6g
     memswap_limit: 6g
     environment:
@@ -21,17 +23,21 @@ services:
       searxng:
         condition: service_started
   playwright-service:
+    restart: unless-stopped  # owner: auto-start with Docker (2026-11-21)
     mem_limit: 3g
     memswap_limit: 3g
 
   # Named volumes so data survives `docker compose down` / container replacement.
   nuq-postgres:
+    restart: unless-stopped  # owner: auto-start with Docker (2026-11-21)
     volumes:
       - nuq-postgres-data:/var/lib/postgresql/data
   redis:
+    restart: unless-stopped  # owner: auto-start with Docker (2026-11-21)
     volumes:
       - redis-data:/data
   rabbitmq:
+    restart: unless-stopped  # owner: auto-start with Docker (2026-11-21)
     # RabbitMQ names its data dir after the hostname; pin it so the volume is reused.
     hostname: rabbitmq
     volumes:
