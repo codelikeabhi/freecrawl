@@ -546,24 +546,44 @@ const scrapePage = async (
     }
   }
 
+  // The main-frame response right after goto; a challenge that clears later
+  // (even during waitAfterLoad) shows up as a newer one.
+  const landed = (): PlaywrightResponse | null => navigation;
+  const initial = landed();
+
   if (waitAfterLoad > 0) {
     await page.waitForTimeout(waitAfterLoad);
   }
 
-  // fork: stealth mode lets a JS challenge (Cloudflare "Just a moment...")
-  // clear itself, as a person's browser would, then reports the page it lands
-  // on. Seen in the benchmark: glassdoor.com.
-  if (STEALTH && CHALLENGE_TITLE.test(await page.title().catch(() => ''))) {
-    const before = navigation;
-    await page
-      .waitForFunction(
-        (pattern: string) => !new RegExp(pattern, 'i').test(document.title),
-        CHALLENGE_TITLE.source,
-        { timeout: Math.max(1, Math.min(15000, deadline - Date.now())) },
-      )
-      .catch(() => {});
+  // fork: stealth mode lets a passive challenge clear itself, as a person's
+  // browser would, then reports the page it lands on. Triggers: a challenge
+  // title ("Just a moment...", seen on glassdoor.com) or a blocking status on
+  // the first response (g2.com answers 403, then loads the real page).
+  const titleIsChallenge = CHALLENGE_TITLE.test(
+    await page.title().catch(() => ''),
+  );
+  const statusIsBlock = [401, 403, 429, 503].includes(response?.status() ?? 0);
+  if (STEALTH && (titleIsChallenge || statusIsBlock)) {
+    const until = Math.min(
+      Date.now() + (titleIsChallenge ? 15000 : 8000),
+      deadline,
+    );
+    const cleared = () => {
+      const now = landed();
+      return !!now && now !== initial && now.status() < 400;
+    };
+    while (!cleared() && Date.now() < until) {
+      if (
+        titleIsChallenge &&
+        !CHALLENGE_TITLE.test(await page.title().catch(() => ''))
+      ) {
+        break;
+      }
+      await page.waitForTimeout(500);
+    }
     await page.waitForLoadState('load', { timeout: 5000 }).catch(() => {});
-    if (navigation && navigation !== before) response = navigation;
+    const now = landed();
+    if (now && now !== initial) response = now;
   }
   page.off('response', onNavigation);
 
