@@ -24,6 +24,9 @@ const STEALTH = (process.env.STEALTH || 'False').toUpperCase() === 'TRUE';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const pw: typeof import('playwright') = require(STEALTH ? 'patchright' : 'playwright');
 const { chromium, devices } = pw;
+// Titles of JS challenges a real browser clears on its own after a few seconds.
+const CHALLENGE_TITLE =
+  /just a moment|checking your browser|verify(ing)? you are human|attention required/i;
 const STEALTH_PROFILE_DIR =
   process.env.STEALTH_PROFILE_DIR || path.resolve('stealth-profiles');
 
@@ -541,13 +544,28 @@ const scrapePage = async (
     } else {
       throw error;
     }
-  } finally {
-    page.off('response', onNavigation);
   }
 
   if (waitAfterLoad > 0) {
     await page.waitForTimeout(waitAfterLoad);
   }
+
+  // fork: stealth mode lets a JS challenge (Cloudflare "Just a moment...")
+  // clear itself, as a person's browser would, then reports the page it lands
+  // on. Seen in the benchmark: glassdoor.com.
+  if (STEALTH && CHALLENGE_TITLE.test(await page.title().catch(() => ''))) {
+    const before = navigation;
+    await page
+      .waitForFunction(
+        (pattern: string) => !new RegExp(pattern, 'i').test(document.title),
+        CHALLENGE_TITLE.source,
+        { timeout: Math.max(1, Math.min(15000, deadline - Date.now())) },
+      )
+      .catch(() => {});
+    await page.waitForLoadState('load', { timeout: 5000 }).catch(() => {});
+    if (navigation && navigation !== before) response = navigation;
+  }
+  page.off('response', onNavigation);
 
   if (checkSelector) {
     try {

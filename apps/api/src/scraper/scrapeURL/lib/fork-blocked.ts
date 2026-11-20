@@ -3,8 +3,9 @@
 
 const BLOCK_STATUSES = new Set([401, 403, 429, 503]);
 
+// Anywhere in the title: sites prefix their name ("Reddit - Prove your humanity").
 const CHALLENGE_TITLES =
-  /<title[^>]*>\s*(just a moment\.\.\.|attention required!? \| cloudflare|access denied|pardon our interruption|are you a robot\??|please verify you are a human|verifying you are human|security check|ddos-guard|one more step)/i;
+  /<title[^>]*>[^<]{0,60}?(just a moment\.\.\.|attention required!? \| cloudflare|access denied|pardon our interruption|are you a robot\??|are you a human\??|please verify you are a human|verify(?:ing)? you are human|prove your humanity|checking your browser|security check|robot check|unusual traffic|ddos-guard|one more step)/i;
 
 const CHALLENGE_MARKERS: [RegExp, string][] = [
   [/challenges\.cloudflare\.com|cf-chl-|cf_chl_opt/i, "Cloudflare challenge"],

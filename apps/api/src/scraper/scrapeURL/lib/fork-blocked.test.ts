@@ -15,6 +15,10 @@ describe("blockedReason", () => {
         "<html><head><title>Just a moment...</title></head></html>",
       ),
     ).toBe('challenge page ("Just a moment...")');
+    // Seen in the benchmark: the site name comes first.
+    expect(
+      blockedReason(200, "<title>Reddit - Prove your humanity</title>"),
+    ).toBe('challenge page ("Prove your humanity")');
   });
 
   it("flags challenge scripts on short pages", () => {
