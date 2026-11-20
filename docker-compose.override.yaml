@@ -51,11 +51,19 @@ services:
       AVGRAB_SERVICE_URL: ${AVGRAB_SERVICE_URL:-}
       # redactPII (PLAN.md Phase 11, D7): Presidio behind fire-privacy's /redact.
       FIRE_PRIVACY_URL: ${FIRE_PRIVACY_URL:-}
+      # product and menu formats (PLAN.md Phase 13).
+      PRODUCT_EXTRACTION_SERVICE_URL: ${PRODUCT_EXTRACTION_SERVICE_URL:-}
+      MENU_EXTRACTION_SERVICE_URL: ${MENU_EXTRACTION_SERVICE_URL:-}
+      # deterministicJson (PLAN.md Phase 13): the sandbox has no network, so
+      # the API reaches it over a Unix socket; codegen uses the local model.
+      CODE_SANDBOX_URL: ws+unix:/sandbox/run.sock
+      EXTRACT_CODEGEN_MODEL: ${MODEL_NAME:-}
       SELF_HOSTED_WEBHOOK_HMAC_SECRET: ${SELF_HOSTED_WEBHOOK_HMAC_SECRET:-}
       # Receivers on the Mac only; scrapes keep the private-address guard.
       FORK_WEBHOOK_LOCAL_HOSTS: host.docker.internal
     volumes:
       - ./data/files:/data/files
+      - sandbox-sock:/sandbox
     depends_on:
       searxng:
         condition: service_started
@@ -108,6 +116,37 @@ services:
       REDIS_URL: redis://redis:6379
       # Optional: raises GitHub search from 10 to 30 requests a minute.
       GITHUB_TOKEN: ${FORK_GITHUB_TOKEN:-}
+    networks:
+      - backend
+    mem_limit: 256m
+    restart: unless-stopped
+
+  # Runs deterministicJson extractors (PLAN.md Phase 13): LLM-written code
+  # from untrusted pages, so no network at all, read-only, no capabilities,
+  # non-root, capped. Its only door is a Unix socket shared with the API.
+  code-sandbox:
+    build: apps/code-sandbox
+    network_mode: none
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 64
+    mem_limit: 1g
+    volumes:
+      - sandbox-sock:/sandbox
+    restart: unless-stopped
+
+  # Product and menu extraction (PLAN.md Phase 13): JSON-LD first, then the
+  # host's Ollama model. Backend network only.
+  structured:
+    build: apps/structured-service
+    environment:
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-}
+      MODEL_NAME: ${MODEL_NAME:-}
     networks:
       - backend
     mem_limit: 256m
@@ -170,6 +209,7 @@ services:
 
 volumes:
   gcs-data:
+  sandbox-sock:
   nuq-postgres-data:
   redis-data:
   rabbitmq-data:

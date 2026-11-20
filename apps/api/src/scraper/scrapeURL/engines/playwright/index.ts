@@ -7,6 +7,9 @@ import { getInnerJson } from "@mendable/firecrawl-rs";
 import { hasFormatOfType } from "../../../../lib/format-utils";
 import { ActionError } from "../../error";
 import { storeDataUrl } from "../../../../lib/fork-files";
+import { getBrandingScript } from "../fire-engine/brandingScript";
+
+const BRANDING_WAIT_MS = 2000;
 
 // fork: Cloud's location picks a geo proxy; here only the browser language
 // changes. ponytail: languages[0], else English for the country.
@@ -41,6 +44,7 @@ async function scrapeWithBrowserService(
   stealth: boolean,
 ): Promise<EngineScrapeResult> {
   const locale = stealth ? undefined : browserLocale(meta.options.location);
+  const branding = !!hasFormatOfType(meta.options.formats, "branding");
   const response = await robustFetch({
     url: serviceUrl,
     headers: {
@@ -48,12 +52,21 @@ async function scrapeWithBrowserService(
     },
     body: {
       url: meta.rewrittenUrl ?? meta.url,
-      wait_after_load: meta.options.waitFor,
+      // fork: branding runs Firecrawl's open branding script after the page
+      // settles, as fire-engine does (2 s default wait).
+      wait_after_load: branding
+        ? meta.options.waitFor || BRANDING_WAIT_MS
+        : meta.options.waitFor,
       timeout: meta.abort.scrapeTimeout(),
       headers: meta.options.headers,
       skip_tls_verification: meta.options.skipTlsVerification,
       screenshot: hasFormatOfType(meta.options.formats, "screenshot"),
-      actions: meta.options.actions,
+      actions: branding
+        ? [
+            ...(meta.options.actions ?? []),
+            { type: "executeJavascript", script: getBrandingScript() },
+          ]
+        : meta.options.actions,
       mobile: meta.options.mobile,
       locale,
       block_ads: meta.options.blockAds !== false,
@@ -157,6 +170,10 @@ export function playwrightMaxReasonableTime(meta: Meta): number {
       (a, x) => (x.type === "wait" ? (x.milliseconds ?? 2500) + a : 250 + a),
       0,
     ) ?? 0) +
+    // fork: the branding wait and script
+    (hasFormatOfType(meta.options.formats, "branding")
+      ? BRANDING_WAIT_MS + 250
+      : 0) +
     30000
   );
 }

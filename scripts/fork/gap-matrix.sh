@@ -51,7 +51,7 @@ crawl.prompt-preview ;; /v2/crawl/params-preview ;; {"url":"$NOSITEMAP","prompt"
 format.changeTracking ;; /v2/scrape ;; {"url":"$HTML","formats":["markdown",{"type":"changeTracking","modes":["git-diff"]}]} ;; .data.changeTracking != null
 format.branding ;; /v2/scrape ;; {"url":"$HTML","formats":["branding"]} ;; .data.branding != null
 format.product ;; /v2/scrape ;; {"url":"https://books.toscrape.com/catalogue/a-light-in-the-attic_1000/index.html","formats":["product"]} ;; .data.product != null
-format.menu ;; /v2/scrape ;; {"url":"$HTML","formats":["menu"]} ;; .data.menu != null
+format.deterministicJson ;; /v2/scrape ;; {"url":"https://books.toscrape.com/catalogue/a-light-in-the-attic_1000/index.html","formats":[{"type":"deterministicJson","schema":{"type":"object","properties":{"title":{"type":"string"},"price":{"type":"string"}},"required":["title","price"]}}],"timeout":140000} ;; (.data.json.title|test("Attic")) and (.data.json.price|test("51.77"))
 format.audio ;; /v2/scrape ;; {"url":"$YT","formats":["audio"]} ;; .data.audio != null
 format.video ;; /v2/scrape ;; {"url":"$YT","formats":["video"]} ;; .data.video != null
 actions.click-wait-scrape ;; /v2/scrape ;; {"url":"$JS","actions":[{"type":"wait","milliseconds":500},{"type":"click","selector":"li.next a"},{"type":"wait","milliseconds":500},{"type":"scrape"}]} ;; (.data.actions.scrapes|length)>0
@@ -156,6 +156,9 @@ upload file.pdf-ocr "$SCANNED" application/pdf '.data.markdown|test("Valve 7")' 
   '{"parsers":[{"type":"pdf","mode":"auto","pages":true}]}'
 sips -s format png "$SCANNED" --out "$OUT/scanned.png" >/dev/null 2>&1
 upload file.image-ocr "$OUT/scanned.png" image/png '.data.markdown|test("Valve 7")'
+# Menu (Phase 13): a cafe page with schema.org menu data.
+printf '%s' '<html><head><title>Blue Cup Cafe</title><script type="application/ld+json">{"@context":"https://schema.org","@type":"Restaurant","name":"Blue Cup Cafe","hasMenu":{"@type":"Menu","hasMenuSection":[{"@type":"MenuSection","name":"Coffee","hasMenuItem":[{"@type":"MenuItem","name":"Flat White","offers":{"@type":"Offer","price":"4.50","priceCurrency":"USD"}}]}]}}</script></head><body><main><h1>Menu</h1><p>Flat White 4.50</p></main></body></html>' >"$OUT/menu.html"
+upload format.menu "$OUT/menu.html" text/html '.data.menu.sections[0].items[0].name == "Flat White"' '{"formats":["markdown","menu"]}'
 # PII redaction (Phase 11): an email and a phone number come back as tags.
 printf '%s' '<html><body><main><p>Mail jane.doe@example.org or call (650) 253-0000.</p></main></body></html>' >"$OUT/pii.html"
 upload redactPII.fixture "$OUT/pii.html" text/html \

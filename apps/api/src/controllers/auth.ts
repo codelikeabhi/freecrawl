@@ -184,7 +184,10 @@ const mockACUC: () => AuthCreditUsageChunk = () => ({
   api_key_id: 0,
   team_id: "bypass",
   org_id: "bypass",
-  flags: null,
+  // fork: the single local team gets the menu format (Phase 13); without a
+  // menu service it now says "not configured" instead of staying silent.
+  // (cast: the ACUC type uses v1 TeamFlags, which predates menuBeta)
+  flags: { menuBeta: true } as unknown as AuthCreditUsageChunk["flags"],
   is_banned: false,
   is_extract: false,
   ...DEFAULT_TEAM_LIMITS,

@@ -1,0 +1,9 @@
+{
+  "name": "freecrawl-code-sandbox",
+  "private": true,
+  "description": "fork: runs deterministicJson extractors (PLAN.md Phase 13). No network; see server.js.",
+  "dependencies": {
+    "jsdom": "29.1.1",
+    "ws": "8.21.0"
+  }
+}

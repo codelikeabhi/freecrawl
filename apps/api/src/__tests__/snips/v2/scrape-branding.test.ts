@@ -224,7 +224,7 @@ describe("Branding on pages it can't run on", () => {
     scrapeTimeout,
   );
 
-  // Self-hosted has no fire-engine, so branding can never run there.
+  // Self-hosted has no fire-engine; branding runs only on a Playwright engine.
   concurrentIf(TEST_SELF_HOST && ALLOW_TEST_SUITE_WEBSITE)(
     "keeps the other formats when branding can't run self-hosted",
     async () => {
@@ -238,8 +238,13 @@ describe("Branding on pages it can't run on", () => {
       );
 
       expect(response.markdown?.length).toBeGreaterThan(0);
-      expect(response.branding).toBeUndefined();
-      expect(response.warning).toContain("Branding was skipped");
+      // fork: the Playwright engine runs the open branding script (Phase 13)
+      if (process.env.PLAYWRIGHT_MICROSERVICE_URL) {
+        expect(response.branding).toBeDefined();
+      } else {
+        expect(response.branding).toBeUndefined();
+        expect(response.warning).toContain("Branding was skipped");
+      }
     },
     scrapeTimeout,
   );

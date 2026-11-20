@@ -39,7 +39,12 @@ export function blockedReason(
   }
   // ponytail: < 50 visible characters on a 200 page is almost always a wall
   // or a shell that never rendered; legit tiny pages are rare.
-  if (text !== undefined && text.trim().length < 50 && /<script/i.test(page)) {
+  // JSON-LD blocks are data, not a JavaScript app that failed to render.
+  if (
+    text !== undefined &&
+    text.trim().length < 50 &&
+    /<script(?![^>]*application\/ld\+json)/i.test(page)
+  ) {
     return "almost no content";
   }
   return undefined;

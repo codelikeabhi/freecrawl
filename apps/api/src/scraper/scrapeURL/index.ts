@@ -795,13 +795,15 @@ async function scrapeURLLoopIter(
     );
     // fork: bot walls often answer 200 with a challenge page. Report the
     // block in metadata, and escalate on it too when a stealth engine exists.
-    const blocked = hasRawBase64
-      ? undefined
-      : blockedReason(
-          engineResult.statusCode,
-          engineResult.html,
-          checkMarkdown,
-        );
+    // (uploads to /v2/parse never touched a site, so they are never blocked)
+    const blocked =
+      hasRawBase64 || meta.internalOptions.isParse
+        ? undefined
+        : blockedReason(
+            engineResult.statusCode,
+            engineResult.html,
+            checkMarkdown,
+          );
     if (blocked) engineResult.blockedReason = blocked;
     const stealthAvailable =
       !!process.env.FORK_STEALTH_URL || !!config.FIRE_ENGINE_BETA_URL;

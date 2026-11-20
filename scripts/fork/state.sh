@@ -9,7 +9,7 @@ cd "$(dirname "$0")/../.."
 
 case "${1:-}" in
   init)
-    for sql in fork/state/index.sql fork/state/monitor.sql; do
+    for sql in fork/state/index.sql fork/state/monitor.sql fork/state/deterministic-json.sql; do
       # shellcheck disable=SC2016
       docker compose exec -T nuq-postgres sh -c 'psql -v ON_ERROR_STOP=1 -q -U "$POSTGRES_USER" -d "$POSTGRES_DB"' \
         <"$sql" 2>/dev/null

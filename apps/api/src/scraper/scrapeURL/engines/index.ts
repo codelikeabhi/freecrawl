@@ -431,7 +431,7 @@ const engineOptions: {
       skipTlsVerification: true,
       useFastMode: false,
       stealthProxy: false,
-      branding: false,
+      branding: !useFireEngine, // fork: runs the open branding script (Phase 13)
       disableAdblock: true, // fork: playwright-service skips its ad blocking
     },
     quality: 20,
@@ -458,7 +458,7 @@ const engineOptions: {
       skipTlsVerification: false,
       useFastMode: false,
       stealthProxy: true,
-      branding: false,
+      branding: !useFireEngine, // fork: runs the open branding script (Phase 13)
       disableAdblock: false,
     },
     quality: -3,

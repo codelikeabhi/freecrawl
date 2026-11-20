@@ -49,6 +49,14 @@ describe("blockedReason", () => {
   });
 });
 
+describe("blockedReason with structured data", () => {
+  it("does not count JSON-LD as a script on a short page", () => {
+    const page =
+      '<html><head><script type="application/ld+json">{"@type":"Product"}</script></head><body><p>$49.99</p></body></html>';
+    expect(blockedReason(200, page, "$49.99")).toBeUndefined();
+  });
+});
+
 describe("pageWarning", () => {
   const page = (title: string, body = "<p>text</p>") =>
     `<html><head><title>${title}</title></head><body>${body}</body></html>`;
