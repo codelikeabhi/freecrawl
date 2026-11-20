@@ -1,4 +1,6 @@
 import axios from "axios";
+import { createHash } from "crypto";
+import { getRedisConnection } from "../../services/queue-service";
 import { config } from "../../config";
 import {
   SearchResultType,
@@ -113,6 +115,17 @@ export async function searxng_search(
       ...(options.safe ? { safesearch: 2 } : {}),
     };
 
+    // fork: the same page within 15 minutes comes from Redis, so bursts of a
+    // query do not get the home IP rate-limited by the engines. Empty pages
+    // are not kept: they are often an engine refusing, not a real answer.
+    const cacheKey = `fork-searxng:${createHash("sha256")
+      .update(JSON.stringify(params))
+      .digest("hex")}`;
+    const cached = await getRedisConnection()
+      .get(cacheKey)
+      .catch(() => null);
+    if (cached) return JSON.parse(cached);
+
     const response = await axios.get(finalUrl, {
       headers: {
         "Content-Type": "application/json",
@@ -121,9 +134,16 @@ export async function searxng_search(
     });
 
     const data = response.data;
-    return data && Array.isArray(data.results)
-      ? data.results.map(toResult[type])
-      : [];
+    const results =
+      data && Array.isArray(data.results)
+        ? data.results.map(toResult[type])
+        : [];
+    if (results.length > 0) {
+      getRedisConnection()
+        .set(cacheKey, JSON.stringify(results), "EX", 900)
+        .catch(() => {});
+    }
+    return results;
   };
 
   const fetchType = async (type: SearchResultType) => {
