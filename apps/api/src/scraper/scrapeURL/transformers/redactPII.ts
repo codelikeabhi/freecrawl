@@ -2,6 +2,7 @@ import { Meta } from "..";
 import { Document } from "../../../controllers/v2/types";
 import { redactText } from "../../../lib/fire-privacy-client";
 import { isUsOnly } from "../../../lib/us-only";
+import { config } from "../../../config";
 
 export async function performRedactPII(
   meta: Meta,
@@ -32,6 +33,17 @@ export async function performRedactPII(
   // On `failed` / `skipped: too_large` (redactedMarkdown === null), fail closed with
   // an empty string so later transformers still receive markdown-shaped input.
   document.markdown = result.redactedMarkdown ?? "";
+
+  // fork: say why the markdown is empty instead of failing silently.
+  if (result.redactedMarkdown === null) {
+    const why = !config.FIRE_PRIVACY_URL
+      ? "no PII redaction service is configured (FIRE_PRIVACY_URL)"
+      : `PII redaction ${result.status} (${result.reason ?? "unknown"})`;
+    const warning = `The markdown was withheld rather than returned unredacted: ${why}.`;
+    document.warning = document.warning
+      ? `${document.warning} ${warning}`
+      : warning;
+  }
 
   return document;
 }

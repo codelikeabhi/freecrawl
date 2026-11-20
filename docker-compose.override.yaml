@@ -49,6 +49,8 @@ services:
       DATABASE_URL: ${DATABASE_URL:-}
       # Audio, video, YouTube metadata and transcripts (PLAN.md Phase 9).
       AVGRAB_SERVICE_URL: ${AVGRAB_SERVICE_URL:-}
+      # redactPII (PLAN.md Phase 11, D7): Presidio behind fire-privacy's /redact.
+      FIRE_PRIVACY_URL: ${FIRE_PRIVACY_URL:-}
       SELF_HOSTED_WEBHOOK_HMAC_SECRET: ${SELF_HOSTED_WEBHOOK_HMAC_SECRET:-}
       # Receivers on the Mac only; scrapes keep the private-address guard.
       FORK_WEBHOOK_LOCAL_HOSTS: host.docker.internal
@@ -109,6 +111,14 @@ services:
     networks:
       - backend
     mem_limit: 256m
+    restart: unless-stopped
+
+  # PII redaction (PLAN.md Phase 11): Presidio + spaCy, English. Backend only.
+  privacy:
+    build: apps/privacy-service
+    networks:
+      - backend
+    mem_limit: 768m
     restart: unless-stopped
 
   # Media (PLAN.md Phase 9): yt-dlp behind avgrab's contract. Writes files to

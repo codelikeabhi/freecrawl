@@ -156,6 +156,11 @@ upload file.pdf-ocr "$SCANNED" application/pdf '.data.markdown|test("Valve 7")' 
   '{"parsers":[{"type":"pdf","mode":"auto","pages":true}]}'
 sips -s format png "$SCANNED" --out "$OUT/scanned.png" >/dev/null 2>&1
 upload file.image-ocr "$OUT/scanned.png" image/png '.data.markdown|test("Valve 7")'
+# PII redaction (Phase 11): an email and a phone number come back as tags.
+printf '%s' '<html><body><main><p>Mail jane.doe@example.org or call (650) 253-0000.</p></main></body></html>' >"$OUT/pii.html"
+upload redactPII.fixture "$OUT/pii.html" text/html \
+  '(.data.markdown|test("<EMAIL_ADDRESS>")) and (.data.markdown|test("<PHONE_NUMBER>")) and (.data.markdown|test("jane")|not)' \
+  '{"redactPII":true}'
 
 # Three-step flow: ask for an upload URL, PUT the file, parse by reference.
 if [[ parse.upload-url =~ $FILTER ]]; then
