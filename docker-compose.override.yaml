@@ -47,6 +47,8 @@ services:
       # Monitors (PLAN.md Phase 12): main DB tables in nuq-postgres
       # (fork/state/monitor.sql); webhooks signed with this secret.
       DATABASE_URL: ${DATABASE_URL:-}
+      # Audio, video, YouTube metadata and transcripts (PLAN.md Phase 9).
+      AVGRAB_SERVICE_URL: ${AVGRAB_SERVICE_URL:-}
       SELF_HOSTED_WEBHOOK_HMAC_SECRET: ${SELF_HOSTED_WEBHOOK_HMAC_SECRET:-}
       # Receivers on the Mac only; scrapes keep the private-address guard.
       FORK_WEBHOOK_LOCAL_HOSTS: host.docker.internal
@@ -107,6 +109,20 @@ services:
     networks:
       - backend
     mem_limit: 256m
+    restart: unless-stopped
+
+  # Media (PLAN.md Phase 9): yt-dlp behind avgrab's contract. Writes files to
+  # ./data/files (served by `files`, deleted after 24 h). Backend network only.
+  media:
+    build: apps/media-service
+    environment:
+      FILES_DIR: /data/files
+      FILES_URL: http://localhost:3010
+    volumes:
+      - ./data/files:/data/files
+    networks:
+      - backend
+    mem_limit: 1g
     restart: unless-stopped
 
   # Stand-in for Google Cloud Storage (PLAN.md Phase 10): scrape results and

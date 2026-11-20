@@ -656,7 +656,11 @@ export async function scrapeURLWithIndex(
       created_at: new Date(selectedRow.created_at),
     },
 
-    postprocessorsUsed: doc.postprocessorsUsed,
+    // fork: the cache keeps raw HTML, not the markdown the YouTube
+    // postprocessor builds, so let it run again on a cached copy.
+    postprocessorsUsed: doc.postprocessorsUsed?.filter(
+      (name: string) => name !== "youtube",
+    ),
 
     proxyUsed:
       doc.proxyUsed ??

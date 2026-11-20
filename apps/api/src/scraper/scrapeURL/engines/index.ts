@@ -421,8 +421,10 @@ const engineOptions: {
       pdf: false,
       document: false,
       image: false,
-      audio: false,
-      video: false,
+      // fork: media formats come from our avgrab-contract service (Phase 9);
+      // with fire-engine on, its engines keep them (audio-routing snips).
+      audio: !useFireEngine,
+      video: !useFireEngine,
       atsv: false,
       location: true, // fork: browser locale only; the engine adds a warning
       mobile: true, // fork: device emulation
@@ -446,8 +448,10 @@ const engineOptions: {
       pdf: false,
       document: false,
       image: false,
-      audio: false,
-      video: false,
+      // fork: media formats come from our avgrab-contract service (Phase 9);
+      // with fire-engine on, its engines keep them (audio-routing snips).
+      audio: !useFireEngine,
+      video: !useFireEngine,
       atsv: false,
       location: false,
       mobile: false,
