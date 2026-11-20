@@ -2,6 +2,7 @@ import { config } from "../config";
 import { getBigtableTable } from "./bigtable-client";
 import { saltedUuidV7RowKey } from "./bigtable-row-key";
 import { setSpanAttributes, withSpan } from "./otel-tracer";
+import { forkStateGet, forkStateSet } from "./fork-state";
 import type { ScrapeReplayContext } from "./scrape-interact/scrape-replay";
 import { type BrowserOptions, isBrowserOptions } from "./browser-options";
 
@@ -114,7 +115,15 @@ async function writeState(params: {
   value: object;
 }): Promise<boolean> {
   const tableId = params.tableId;
-  if (!tableId) return false;
+  if (!tableId) {
+    // fork: Redis stand-in (lib/fork-state.ts); false when it is off
+    return forkStateSet(
+      params.spanName.replace(/\.write$/, ""),
+      params.id,
+      JSON.stringify(params.value),
+      new Date(Date.now() + STATE_RETENTION_MS),
+    );
+  }
 
   return withSpan(params.spanName, async span => {
     setSpanAttributes(span, {
@@ -148,7 +157,18 @@ async function readState<T>(params: {
   parse: (value: Buffer | string) => T & { completedAtMs: number };
 }): Promise<T | null> {
   const tableId = params.tableId;
-  if (!tableId) return null;
+  if (!tableId) {
+    // fork: Redis stand-in (lib/fork-state.ts); null when it is off
+    const raw = await forkStateGet(
+      params.spanName.replace(/\.read$/, ""),
+      params.id,
+    );
+    if (raw === null) return null;
+    const state = params.parse(raw);
+    return state.completedAtMs + STATE_RETENTION_MS <= Date.now()
+      ? null
+      : state;
+  }
 
   return withSpan(params.spanName, async span => {
     setSpanAttributes(span, {

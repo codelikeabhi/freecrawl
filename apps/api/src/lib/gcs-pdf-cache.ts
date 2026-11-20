@@ -4,7 +4,7 @@ import type { FirePdfProvenance } from "../scraper/scrapeURL/engines/pdf/fire-pd
 import { logger } from "./logger";
 import { config } from "../config";
 import crypto from "crypto";
-import { storage } from "./gcs-jobs";
+import { isForkGcsNotFound, storage } from "./gcs-jobs";
 
 type PdfCacheProvider = "runpod" | "firepdf";
 
@@ -148,7 +148,7 @@ export async function getPdfResultFromCache(
     if (
       error instanceof ApiError &&
       error.code === 404 &&
-      error.message.includes("No such object:")
+      (error.message.includes("No such object:") || isForkGcsNotFound(error))
     ) {
       return null;
     }

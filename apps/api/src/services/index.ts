@@ -24,7 +24,7 @@ import type { Logger } from "winston";
 import { parseHostname } from "../lib/url-utils";
 import { MapDocument } from "../controllers/v2/types";
 import type { PdfMetadata } from "../scraper/scrapeURL/engines/pdf/types";
-import { storage } from "../lib/gcs-jobs";
+import { isForkGcsNotFound, storage } from "../lib/gcs-jobs";
 import { withSpan, setSpanAttributes } from "../lib/otel-tracer";
 import { config } from "../config";
 import { getGcsScreenshotUrlResignReason } from "./index-screenshot-url";
@@ -99,7 +99,7 @@ export async function getIndexFromGCS(
     if (
       error instanceof ApiError &&
       error.code === 404 &&
-      error.message.includes("No such object:")
+      (error.message.includes("No such object:") || isForkGcsNotFound(error))
     ) {
       return null;
     }

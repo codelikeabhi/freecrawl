@@ -3,6 +3,11 @@ import { config } from "../config";
 import { diffGetLastScrape } from "../db/rpc";
 import { getBigtableTable } from "./bigtable-client";
 import { setSpanAttributes, withSpan } from "./otel-tracer";
+import { forkLocalState, forkStateGet, forkStateSet } from "./fork-state";
+
+// fork: Redis keeps the newest scrape per (team, url, tag) when Bigtable is
+// not configured; the main-DB archive fallback does not exist here.
+const useForkState = () => forkLocalState() && !config.BIGTABLE_INSTANCE_ID;
 
 // Change tracking bookkeeping. Final architecture (#4484 was the
 // transition): Bigtable is the store. Writes go to Bigtable only --
@@ -67,6 +72,26 @@ export async function changeTrackingInsertScrape(params: {
   /** When the scrape was logged; becomes the cell timestamp. */
   date_added: Date;
 }): Promise<void> {
+  if (useForkState()) {
+    const id = changeTrackingRowKey(params.team_id, params.url, params.tag);
+    const previous = await forkStateGet("change-tracking", id.toString("hex"));
+    // Like Bigtable's newest cell: an older scrape logged late never wins.
+    if (
+      previous &&
+      JSON.parse(previous).date_added > params.date_added.toISOString()
+    ) {
+      return;
+    }
+    await forkStateSet(
+      "change-tracking",
+      id.toString("hex"),
+      JSON.stringify({
+        job_id: params.job_id,
+        date_added: params.date_added.toISOString(),
+      }),
+    );
+    return;
+  }
   await withSpan("bigtable.change_tracking.write", async span => {
     setSpanAttributes(span, {
       "db.system": "bigtable",
@@ -110,6 +135,11 @@ export async function changeTrackingGetLastScrape(params: {
   url: string;
   tag: string | null;
 }): Promise<{ job_id: string; date_added: string } | null> {
+  if (useForkState()) {
+    const id = changeTrackingRowKey(params.team_id, params.url, params.tag);
+    const raw = await forkStateGet("change-tracking", id.toString("hex"));
+    return raw === null ? null : JSON.parse(raw);
+  }
   const table = await getBigtableTable(TABLE_ID);
   const key = changeTrackingRowKey(params.team_id, params.url, params.tag);
   const rows = await withSpan("bigtable.change_tracking.read", async span => {

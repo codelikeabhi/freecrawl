@@ -36,6 +36,14 @@ services:
       # service speaks both contracts the API forwards to.
       RESEARCH_PROXY_URL: ${RESEARCH_PROXY_URL:-}
       SEARCH_PLATFORM_URL: ${SEARCH_PLATFORM_URL:-}
+      # Local state (PLAN.md Phase 10, D10): scrape index in nuq-postgres,
+      # documents in fake-gcs, job access/state and change-tracking history
+      # in Redis (lib/fork-state.ts). `scripts/fork/state.sh init` once.
+      INDEX_DATABASE_URL: ${INDEX_DATABASE_URL:-}
+      GCS_BUCKET_NAME: ${GCS_BUCKET_NAME:-}
+      GCS_INDEX_BUCKET_NAME: ${GCS_INDEX_BUCKET_NAME:-}
+      FORK_GCS_ENDPOINT: ${FORK_GCS_ENDPOINT:-}
+      FORK_LOCAL_STATE: ${FORK_LOCAL_STATE:-}
     volumes:
       - ./data/files:/data/files
     depends_on:
@@ -95,6 +103,20 @@ services:
     mem_limit: 256m
     restart: unless-stopped
 
+  # Stand-in for Google Cloud Storage (PLAN.md Phase 10): scrape results and
+  # cached pages, kept in the gcs-data volume. Backend network only.
+  fake-gcs:
+    image: fsouza/fake-gcs-server:1.56.1
+    command: ["-scheme", "http", "-port", "4443", "-backend", "filesystem",
+              "-filesystem-root", "/storage", "-public-host", "fake-gcs:4443",
+              "-external-url", "http://fake-gcs:4443", "-log-level", "warn"]
+    volumes:
+      - gcs-data:/storage
+    networks:
+      - backend
+    mem_limit: 256m
+    restart: unless-stopped
+
   # Serves stored screenshots and PDFs (PLAN.md Phase 5). Localhost only, read-only,
   # no directory listing; files have random names and are deleted after 24 h.
   files:
@@ -115,6 +137,7 @@ services:
     profiles: [fdb]
 
 volumes:
+  gcs-data:
   nuq-postgres-data:
   redis-data:
   rabbitmq-data:

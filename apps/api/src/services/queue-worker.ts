@@ -33,6 +33,7 @@ import {
 } from "./monitoring/queue";
 import { shutdownPubSubLogging } from "./logging/log_job";
 import { startRole } from "../main";
+import { processIndexInsertJobs } from "./index";
 
 configDotenv();
 
@@ -442,6 +443,16 @@ export async function start() {
   });
 
   initializeEngineForcing();
+
+  // fork: without DB auth the index-worker (billing, SIEM, ...) never starts,
+  // so nothing would drain the index insert queue (PLAN.md Phase 10).
+  if (config.INDEX_DATABASE_URL && !config.USE_DB_AUTHENTICATION) {
+    setInterval(() => {
+      processIndexInsertJobs().catch(error => {
+        _logger.error("Failed to drain the index insert queue", { error });
+      });
+    }, 3000);
+  }
 
   if (config.USE_DB_AUTHENTICATION && !config.DISABLE_MONITORING) {
     monitorSchedulerInterval = setInterval(() => {

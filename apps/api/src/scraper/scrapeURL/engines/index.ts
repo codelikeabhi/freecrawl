@@ -641,6 +641,9 @@ export function shouldUseIndex(meta: Meta) {
     !getPDFBlocks(meta.options.parsers) &&
     !getPDFPageMarkers(meta.options.parsers) &&
     !hasCustomScreenshotSettings &&
+    // fork: screenshots are local files deleted after 24 h (lib/fork-files.ts);
+    // a cached copy (maxAge defaults to 2 days) could link to a deleted file.
+    !(process.env.FORK_FILES_DIR && screenshotFormat) &&
     meta.options.maxAge !== 0 &&
     // A PDF refresh asks for a fresh parse; a URL index copy is the parse
     // being refreshed, so serving it would silently ignore the request.

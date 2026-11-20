@@ -3,6 +3,7 @@ import { getBigtableTable } from "./bigtable-client";
 import { saltedUuidV7RowKey } from "./bigtable-row-key";
 import { persistedTeamId } from "./keyless-team";
 import { setSpanAttributes, withSpan } from "./otel-tracer";
+import { forkStateGet, forkStateSet } from "./fork-state";
 
 /**
  * Default lifetime of a job's access row, used by writes that do not pass
@@ -74,7 +75,11 @@ export async function readApiJobAccess(
   id: string,
 ): Promise<ApiJobAccess | null> {
   const tableId = config.BIGTABLE_JOB_ACCESS_TABLE;
-  if (!tableId) return null;
+  if (!tableId) {
+    // fork: Redis stand-in (lib/fork-state.ts); null when it is off
+    const raw = await forkStateGet("job-access", id);
+    return raw === null ? null : parseApiJobAccess(raw);
+  }
 
   return withSpan("bigtable.job_access.read", async span => {
     setSpanAttributes(span, {
@@ -116,8 +121,30 @@ export async function writeApiJobAccess(params: {
   zeroDataRetention?: boolean;
   zeroDataRetentionMinutes?: number;
 }): Promise<boolean> {
+  const payload = {
+    version: 1,
+    teamId: params.teamId,
+    kind: params.kind,
+    expiresAtMs: params.expiresAt.getTime(),
+    ...(params.kind === "agent" && params.clientOrigin
+      ? { clientOrigin: params.clientOrigin }
+      : {}),
+    ...(params.kind === "agent" &&
+    params.zeroDataRetention &&
+    params.zeroDataRetentionMinutes !== undefined
+      ? { zeroDataRetentionMinutes: params.zeroDataRetentionMinutes }
+      : {}),
+  };
   const tableId = config.BIGTABLE_JOB_ACCESS_TABLE;
-  if (!tableId) return false;
+  if (!tableId) {
+    // fork: Redis stand-in (lib/fork-state.ts); false when it is off
+    return forkStateSet(
+      "job-access",
+      params.id,
+      JSON.stringify(payload),
+      params.expiresAt,
+    );
+  }
 
   return withSpan(
     "bigtable.job_access.write",
@@ -128,22 +155,7 @@ export async function writeApiJobAccess(params: {
         "bigtable.operation": "mutate",
         "job_access.kind": params.kind,
       });
-      const value = Buffer.from(
-        JSON.stringify({
-          version: 1,
-          teamId: params.teamId,
-          kind: params.kind,
-          expiresAtMs: params.expiresAt.getTime(),
-          ...(params.kind === "agent" && params.clientOrigin
-            ? { clientOrigin: params.clientOrigin }
-            : {}),
-          ...(params.kind === "agent" &&
-          params.zeroDataRetention &&
-          params.zeroDataRetentionMinutes !== undefined
-            ? { zeroDataRetentionMinutes: params.zeroDataRetentionMinutes }
-            : {}),
-        }),
-      );
+      const value = Buffer.from(JSON.stringify(payload));
       const table = await getBigtableTable(tableId);
       await table.mutate([
         {

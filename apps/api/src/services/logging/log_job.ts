@@ -47,6 +47,7 @@ import {
   initializeRequestCredits,
   recordRequestCredits,
 } from "../../lib/request-credits-store";
+import { forkLocalState } from "../../lib/fork-state";
 configDotenv();
 
 const previewTeamId = "3adefd26-77ec-5968-8dcf-c94b5630d1de";
@@ -806,7 +807,8 @@ async function logScrapeInternal(scrape: LoggedScrape, hooks?: LogScrapeHooks) {
     !scrape.is_parse &&
     scrape.is_successful &&
     !scrape.zeroDataRetention &&
-    config.USE_DB_AUTHENTICATION &&
+    // fork: history also lives in Redis with auth off (lib/fork-state.ts)
+    (config.USE_DB_AUTHENTICATION || forkLocalState()) &&
     !scrape.team_id.startsWith("preview_")
   ) {
     const hasMarkdown = hasFormatOfType(scrape.options.formats, "markdown");

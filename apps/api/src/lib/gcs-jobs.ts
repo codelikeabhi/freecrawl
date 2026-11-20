@@ -18,10 +18,21 @@ import { Logger } from "winston";
 const credentials = config.GCS_CREDENTIALS
   ? JSON.parse(atob(config.GCS_CREDENTIALS))
   : undefined;
-export const storage = new Storage({ credentials });
+// fork: a local GCS stand-in (fake-gcs-server, PLAN.md Phase 10). Its paths
+// only line up for both uploads and downloads with an explicit endpoint;
+// STORAGE_EMULATOR_HOST drops /storage/v1 from download URLs.
+const forkEndpoint = process.env.FORK_GCS_ENDPOINT
+  ? { apiEndpoint: process.env.FORK_GCS_ENDPOINT, projectId: "local" }
+  : {};
+/** fake-gcs-server answers a missing object with a bare 404, without GCS's "No such object:" text. */
+export const isForkGcsNotFound = (error: unknown) =>
+  !!process.env.FORK_GCS_ENDPOINT && (error as { code?: number })?.code === 404;
+
+export const storage = new Storage({ credentials, ...forkEndpoint });
 
 const storageManualRetries = new Storage({
   credentials,
+  ...forkEndpoint,
   retryOptions: {
     autoRetry: false,
     maxRetries: 0,
@@ -136,7 +147,14 @@ async function saveJobToGCS(params: {
           await blob.save(data, {
             metadata: {
               contentType: "application/json",
-              metadata: params.metadata,
+              // fork: GCS keeps custom metadata as strings and converts other
+              // values itself; fake-gcs-server (Phase 10) rejects them.
+              metadata: Object.fromEntries(
+                Object.entries(params.metadata ?? {}).map(([k, v]) => [
+                  k,
+                  v == null || typeof v === "string" ? v : JSON.stringify(v),
+                ]),
+              ),
             },
             resumable: data.length > 3 * 1024 * 1024, // 3MB, 5MB official limit
           });
@@ -414,7 +432,7 @@ export async function getJobFromGCS(jobId: string): Promise<Document[] | null> {
       if (
         error instanceof ApiError &&
         error.code === 404 &&
-        error.message.includes("No such object:")
+        (error.message.includes("No such object:") || isForkGcsNotFound(error))
       ) {
         setSpanAttributes(span, { "gcs.job_found": false });
         return null;
@@ -461,7 +479,7 @@ export async function removeJobFromGCS(
       if (
         error instanceof ApiError &&
         error.code === 404 &&
-        error.message.includes("No such object:")
+        (error.message.includes("No such object:") || isForkGcsNotFound(error))
       ) {
         setSpanAttributes(span, { "gcs.job_not_found": true });
         return;
@@ -493,7 +511,7 @@ export async function getDocFromGCS(url: string): Promise<any | null> {
     if (
       error instanceof ApiError &&
       error.code === 404 &&
-      error.message.includes("No such object:")
+      (error.message.includes("No such object:") || isForkGcsNotFound(error))
     ) {
       return null;
     }

@@ -89,6 +89,7 @@ agent ;; async /v2/agent ;; {"prompt":"Find the title of example.com"} ;; .statu
 monitor.create ;; /v2/monitor ;; {"url":"$HTML","schedule":"0 * * * *"} ;; .success == true
 computer.session ;; /v2/computer/sessions ;; {} ;; .success == true
 alexandria ;; /v2/alexandria ;; {"provider":"fred","capability":"series/observations","options":{}} ;; .success == true
+scrape.by-id ;; get /v2/scrape/{SCRAPE_ID} ;;  ;; (.data.markdown|length)>0
 interact ;; /v2/scrape/{SCRAPE_ID}/interact ;; {"prompt":"What is the page title?"} ;; .success == true
 EOF
 )
