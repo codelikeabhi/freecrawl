@@ -28,6 +28,7 @@ import {
 } from "./engines";
 import { applyHandoffFeatureFlags } from "./lib/handoffFeatureFlags";
 import { blockedReason, pageWarning } from "./lib/fork-blocked";
+import { browserLocale } from "./engines/playwright";
 import { parseMarkdown } from "../../lib/html-to-markdown";
 import { hasFormatOfType } from "../../lib/format-utils";
 import {
@@ -1302,6 +1303,17 @@ async function scrapeURLLoop(meta: Meta): Promise<ScrapeUrlResponse> {
         document.warning !== undefined
           ? document.warning + " " + warning
           : warning;
+    }
+
+    // fork: a cached copy keeps the caveat the browser engine adds for
+    // location emulation (engines/playwright/index.ts).
+    const cachedLocale =
+      engineResult.cacheInfo && browserLocale(meta.options.location);
+    if (cachedLocale && !document.warning?.includes("location:")) {
+      const caveat = `location: the browser language is set to ${cachedLocale}, but the request still comes from this machine's IP address (no geo proxy is configured).`;
+      document.warning = document.warning
+        ? `${document.warning} ${caveat}`
+        : caveat;
     }
 
     // fork: soft 404s and sign-in walls succeed with the wrong content; say so.

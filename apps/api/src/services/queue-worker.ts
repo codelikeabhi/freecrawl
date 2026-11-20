@@ -34,6 +34,7 @@ import {
 import { shutdownPubSubLogging } from "./logging/log_job";
 import { startRole } from "../main";
 import { processIndexInsertJobs } from "./index";
+import { processWebhookInsertJobs } from "./webhook";
 
 configDotenv();
 
@@ -453,8 +454,23 @@ export async function start() {
       });
     }, 3000);
   }
+  // fork: same for webhook delivery logs, which would pile up in Redis.
+  if (
+    process.env.FORK_LOCAL_STATE === "true" &&
+    !config.USE_DB_AUTHENTICATION
+  ) {
+    setInterval(() => {
+      processWebhookInsertJobs().catch(error => {
+        _logger.error("Failed to drain the webhook log queue", { error });
+      });
+    }, 15000);
+  }
 
-  if (config.USE_DB_AUTHENTICATION && !config.DISABLE_MONITORING) {
+  // fork: monitors also run with auth off when local state is on (Phase 12)
+  if (
+    (config.USE_DB_AUTHENTICATION || process.env.FORK_LOCAL_STATE === "true") &&
+    !config.DISABLE_MONITORING
+  ) {
     monitorSchedulerInterval = setInterval(() => {
       enqueueDueMonitorChecks().catch(error => {
         _logger.error("Failed to enqueue due monitor checks", { error });

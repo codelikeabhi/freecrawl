@@ -159,13 +159,17 @@ export function getDbPoolMetrics(): string {
 }
 
 const useDbAuthentication = config.USE_DB_AUTHENTICATION;
+// fork: monitors keep their tables in the main DB, also with auth off
+// (PLAN.md Phase 12; fork/state/monitor.sql).
+const useMainDb =
+  useDbAuthentication || process.env.FORK_LOCAL_STATE === "true";
 
-const mainDb = useDbAuthentication
+const mainDb = useMainDb
   ? makeDb(config.DATABASE_URL, "firecrawl-api", "main")
   : null;
 // Without a distinct replica URL the "replica" pool points at the primary's
 // pooler, so it must not hold a second warm set of connections there.
-const replicaDb = useDbAuthentication
+const replicaDb = useMainDb
   ? makeDb(
       config.DATABASE_REPLICA_URL ?? config.DATABASE_URL,
       "firecrawl-api-rr",

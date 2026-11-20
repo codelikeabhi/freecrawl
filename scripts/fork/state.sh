@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Local state (PLAN.md Phase 10): the scrape index in nuq-postgres and the
-# document buckets in fake-gcs. Run once after the stack is up, and again
+# Local state (PLAN.md Phases 10, 12): the scrape index and monitor tables in
+# nuq-postgres, and the document buckets in fake-gcs. Run once after the stack is up, and again
 # after the volumes are recreated; it is safe to repeat.
 #
 #   scripts/fork/state.sh init
@@ -9,10 +9,12 @@ cd "$(dirname "$0")/../.."
 
 case "${1:-}" in
   init)
-    # shellcheck disable=SC2016
-    docker compose exec -T nuq-postgres sh -c 'psql -v ON_ERROR_STOP=1 -q -U "$POSTGRES_USER" -d "$POSTGRES_DB"' \
-      <fork/state/index.sql 2>/dev/null
-    echo "index table and index_get_recent_5: ok"
+    for sql in fork/state/index.sql fork/state/monitor.sql; do
+      # shellcheck disable=SC2016
+      docker compose exec -T nuq-postgres sh -c 'psql -v ON_ERROR_STOP=1 -q -U "$POSTGRES_USER" -d "$POSTGRES_DB"' \
+        <"$sql" 2>/dev/null
+      echo "$sql: ok"
+    done
     for bucket in fc-jobs fc-index; do
       docker compose exec -T api node -e '
         fetch("http://fake-gcs:4443/storage/v1/b?project=local", {

@@ -44,6 +44,12 @@ services:
       GCS_INDEX_BUCKET_NAME: ${GCS_INDEX_BUCKET_NAME:-}
       FORK_GCS_ENDPOINT: ${FORK_GCS_ENDPOINT:-}
       FORK_LOCAL_STATE: ${FORK_LOCAL_STATE:-}
+      # Monitors (PLAN.md Phase 12): main DB tables in nuq-postgres
+      # (fork/state/monitor.sql); webhooks signed with this secret.
+      DATABASE_URL: ${DATABASE_URL:-}
+      SELF_HOSTED_WEBHOOK_HMAC_SECRET: ${SELF_HOSTED_WEBHOOK_HMAC_SECRET:-}
+      # Receivers on the Mac only; scrapes keep the private-address guard.
+      FORK_WEBHOOK_LOCAL_HOSTS: host.docker.internal
     volumes:
       - ./data/files:/data/files
     depends_on:

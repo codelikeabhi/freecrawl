@@ -86,7 +86,7 @@ map.search-param ;; /v2/map ;; {"url":"https://docs.firecrawl.dev","search":"cra
 batch.scrape ;; async /v2/batch/scrape ;; {"urls":["$HTML","$JS"]} ;; .status == "completed" and (.data|length) == 2
 crawl.screenshot ;; async /v2/crawl ;; {"url":"$NOSITEMAP","limit":2,"scrapeOptions":{"formats":["screenshot"]}} ;; .status == "completed" and (.data[0].screenshot != null)
 agent ;; async /v2/agent ;; {"prompt":"Find the title of example.com"} ;; .status == "completed"
-monitor.create ;; /v2/monitor ;; {"url":"$HTML","schedule":"0 * * * *"} ;; .success == true
+monitor.create ;; /v2/monitor ;; {"name":"gap-matrix","schedule":{"text":"hourly"},"targets":[{"type":"scrape","urls":["$HTML"]}]} ;; .success == true and .data.id != null
 computer.session ;; /v2/computer/sessions ;; {} ;; .success == true
 alexandria ;; /v2/alexandria ;; {"provider":"fred","capability":"series/observations","options":{}} ;; .success == true
 scrape.by-id ;; get /v2/scrape/{SCRAPE_ID} ;;  ;; (.data.markdown|length)>0
@@ -131,6 +131,10 @@ while IFS= read -r line; do
   if [[ $(jq -r "$evidence" <<<"$resp" 2>/dev/null) == true ]]; then res=OK; else res=FAIL; fi
   printf '%-30s %-4s %-4s %s\n' "$name" "$http" "$res" "$(note "$resp")"
 done <<<"$CASES"
+
+# monitor.create leaves an hourly monitor behind; remove it.
+mid=$(jq -r '.data.id // empty' "$OUT/monitor.create.json" 2>/dev/null)
+[[ -n $mid ]] && curl -s -o /dev/null -X DELETE "$API/v2/monitor/$mid"
 
 # /v2/parse takes a multipart upload, so uploads get their own calls.
 #   upload <name> <file> <content-type> <jq evidence> [options JSON]

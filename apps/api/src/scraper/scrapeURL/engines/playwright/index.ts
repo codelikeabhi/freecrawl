@@ -10,7 +10,7 @@ import { storeDataUrl } from "../../../../lib/fork-files";
 
 // fork: Cloud's location picks a geo proxy; here only the browser language
 // changes. ponytail: languages[0], else English for the country.
-function browserLocale(location: Meta["options"]["location"]) {
+export function browserLocale(location: Meta["options"]["location"]) {
   if (!location) return undefined;
   return (
     location.languages?.[0] ??

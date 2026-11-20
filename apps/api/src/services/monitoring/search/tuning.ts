@@ -43,7 +43,12 @@ function hasVertex(): boolean {
 }
 
 export function hasLlmProvider(): boolean {
-  return hasVertex() || Boolean(geminiApiKey());
+  // fork: getModel routes to the local Ollama model when it is configured
+  return (
+    hasVertex() ||
+    Boolean(geminiApiKey()) ||
+    Boolean(config.OLLAMA_BASE_URL && config.MODEL_NAME)
+  );
 }
 
 export function googleModel(

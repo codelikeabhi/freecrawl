@@ -6,6 +6,19 @@ import {
   getSecureDispatcherNoCookies,
   isIPPrivate,
 } from "../../scraper/scrapeURL/engines/utils/safeFetch";
+
+// fork: webhooks to hosts listed in FORK_WEBHOOK_LOCAL_HOSTS (a receiver on
+// the owner's Mac, reached as host.docker.internal) skip the private-address
+// guard. Scrapes keep it: ALLOW_LOCAL_WEBHOOKS would lift it for them too.
+const forkLocalWebhookHosts = new Set(
+  (process.env.FORK_WEBHOOK_LOCAL_HOSTS ?? "")
+    .split(",")
+    .map(host => host.trim().toLowerCase())
+    .filter(Boolean),
+);
+const forkLocalDispatcher = new undici.Agent();
+const isForkLocalWebhook = (url: string) =>
+  forkLocalWebhookHosts.has(new URL(url).hostname.toLowerCase());
 import type {
   WebhookConfig,
   WebhookEvent,
@@ -183,7 +196,9 @@ export class WebhookSender {
         method: "POST",
         headers,
         body: payloadString,
-        dispatcher: getSecureDispatcherNoCookies(),
+        dispatcher: isForkLocalWebhook(this.config.url)
+          ? forkLocalDispatcher
+          : getSecureDispatcherNoCookies(),
         signal: abortController.signal,
       });
 
