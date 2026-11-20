@@ -1,5 +1,6 @@
 import * as undici from "undici";
 import { getSecureDispatcher } from "../scraper/scrapeURL/engines/utils/safeFetch";
+import { getDomain } from "tldts";
 
 export const protocolIncluded = (url: string) => {
   // if :// not in the start of the url assume http (maybe https?)
@@ -80,16 +81,12 @@ export function isSameDomain(url: string, baseUrl: string) {
     return hostname.startsWith("www.") ? hostname.slice(4) : hostname;
   };
 
-  const domain1 = cleanHostname(typedUrlObj1.hostname)
-    .split(".")
-    .slice(-2)
-    .join(".");
-  const domain2 = cleanHostname(typedUrlObj2.hostname)
-    .split(".")
-    .slice(-2)
-    .join(".");
+  // fork: the registrable domain from the public suffix list, so a.co.uk and
+  // b.co.uk are different sites (the last two labels would both be co.uk).
+  const site = (hostname: string) =>
+    getDomain(hostname) ?? cleanHostname(hostname);
 
-  return domain1 === domain2;
+  return site(typedUrlObj1.hostname) === site(typedUrlObj2.hostname);
 }
 
 export function isSameSubdomain(url: string, baseUrl: string) {

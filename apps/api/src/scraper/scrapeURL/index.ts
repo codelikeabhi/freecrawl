@@ -27,7 +27,7 @@ import {
   shouldUseIndex,
 } from "./engines";
 import { applyHandoffFeatureFlags } from "./lib/handoffFeatureFlags";
-import { blockedReason } from "./lib/fork-blocked";
+import { blockedReason, pageWarning } from "./lib/fork-blocked";
 import { parseMarkdown } from "../../lib/html-to-markdown";
 import { hasFormatOfType } from "../../lib/format-utils";
 import {
@@ -1302,6 +1302,14 @@ async function scrapeURLLoop(meta: Meta): Promise<ScrapeUrlResponse> {
         document.warning !== undefined
           ? document.warning + " " + warning
           : warning;
+    }
+
+    // fork: soft 404s and sign-in walls succeed with the wrong content; say so.
+    const pageIssue = pageWarning(engineResult.statusCode, engineResult.html);
+    if (pageIssue) {
+      document.warning = document.warning
+        ? `${document.warning} ${pageIssue}`
+        : pageIssue;
     }
 
     meta.brandingScreenshot = engineResult.brandingScreenshot;

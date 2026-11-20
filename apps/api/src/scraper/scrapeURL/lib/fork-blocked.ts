@@ -44,3 +44,27 @@ export function blockedReason(
   }
   return undefined;
 }
+
+// Pages that are not what was asked for, though no bot wall: stealth would
+// not help, so these become a warning instead of an escalation.
+// The title must start with the phrase (after an optional "Site - " prefix),
+// so an article about HTTP 404 is not flagged.
+const NOT_FOUND_TITLE =
+  /<title[^>]*>\s*(?:[^<]{0,40}?\s[-|:–]\s*)?(?:404\b|page not found|not found|page (?:does not|doesn't) exist)/i;
+const PASSWORD_INPUT = /<input[^>]+type\s*=\s*["']?password/i;
+
+export function pageWarning(
+  statusCode: number,
+  html: string | undefined,
+): string | undefined {
+  if (!html || statusCode < 200 || statusCode >= 300) return undefined;
+  if (NOT_FOUND_TITLE.test(html)) {
+    return `This page looks like a "not found" page, although the server answered ${statusCode}.`;
+  }
+  // ponytail: a password field on a short page is a sign-in wall; long pages
+  // often carry a login box in the header and still show their content.
+  if (PASSWORD_INPUT.test(html) && html.length < 30000) {
+    return "This page is mostly a sign-in form; the content may be behind a login.";
+  }
+  return undefined;
+}

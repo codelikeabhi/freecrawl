@@ -6,6 +6,7 @@ import { stat } from "fs/promises";
 import { HTML_TO_MARKDOWN_PATH } from "../natives";
 import { convertHTMLToMarkdownWithHttpService } from "./html-to-markdown-client";
 import { postProcessMarkdown } from "@mendable/firecrawl-rs";
+import { forkPrepareHtml } from "./fork-markdown-prepass";
 
 // TODO: add a timeout to the Go parser
 
@@ -60,6 +61,9 @@ export async function parseMarkdown(
   if (!html) {
     return "";
   }
+
+  // fork: code languages, copy buttons, heading anchors (fork-markdown-prepass.ts)
+  html = forkPrepareHtml(html);
 
   const contextLogger = context?.logger || logger;
   const requestId = context?.requestId;

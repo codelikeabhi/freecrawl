@@ -27,7 +27,8 @@ import {
   isMarkdownContentType,
 } from "../scrapeURL/lib/extractLinksFromMarkdown";
 
-export const SITEMAP_LIMIT = 25;
+// fork: FORK_SITEMAP_LIMIT raises the cap for sites with large sitemap indexes.
+export const SITEMAP_LIMIT = Number(process.env.FORK_SITEMAP_LIMIT) || 25;
 const SITEMAP_FETCH_CONCURRENCY = 3;
 const SITEMAP_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
 
@@ -921,7 +922,9 @@ export class WebCrawler {
   ): Promise<number> {
     const sitemapUrl =
       url.toLowerCase().endsWith(".xml") ||
-      url.toLowerCase().endsWith(".xml.gz")
+      url.toLowerCase().endsWith(".xml.gz") ||
+      // fork: a robots.txt Sitemap: line is the sitemap's own URL (#5543)
+      this.robots?.getSitemaps().includes(url)
         ? url
         : `${url}${url.endsWith("/") ? "" : "/"}sitemap.xml`;
 

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Run API snips (E2E tests) against the running compose stack, inside Docker.
+# Files run one at a time: OCR and the local model share one GPU.
 #
 #   scripts/fork/snips.sh src/__tests__/snips/v2/fork-search.test.ts [more files...]
 #
@@ -25,7 +26,8 @@ docker run --rm --network firecrawl_backend \
   -e USE_DB_AUTHENTICATION=false \
   -e TEST_API_KEY=fc-selfhosted -e TEST_TEAM_ID=bypass \
   -e REDIS_URL=redis://redis:6379 \
+  -e USE_GO_MARKDOWN_PARSER=true \
   -e REDIS_RATE_LIMIT_URL=redis://redis:6379 \
   -e PLAYWRIGHT_MICROSERVICE_URL=http://playwright-service:3000/scrape \
   $(env_from_dotenv 'SEARXNG_ENDPOINT|OPENAI_API_KEY|OPENAI_BASE_URL|OLLAMA_BASE_URL|MODEL_NAME|FORK_STEALTH_URL|FIRE_PDF_ENABLE|FIRE_PDF_BASE_URL|IMAGE_OCR_ENABLED|PDF_RUST_EXTRACT_ENABLE|PARSE_PDF_ALWAYS_FIRE_PDF|RESEARCH_PROXY_URL|SEARCH_PLATFORM_URL') \
-  firecrawl-api-test pnpm exec vitest run "$@"
+  firecrawl-api-test pnpm exec vitest run --no-file-parallelism "$@"

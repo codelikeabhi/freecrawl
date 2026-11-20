@@ -47,6 +47,14 @@ describe("isSameDomain", () => {
     );
     expect(result).toBe(true);
   });
+
+  // fork: multi-label public suffixes (#4296)
+  it("should tell apart sites under the same public suffix", () => {
+    expect(isSameDomain("http://a.co.uk", "http://b.co.uk")).toBe(false);
+    expect(isSameDomain("http://news.bbc.co.uk", "http://www.bbc.co.uk")).toBe(
+      true,
+    );
+  });
 });
 
 describe("isSameSubdomain", () => {

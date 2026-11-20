@@ -13,6 +13,10 @@ services:
       # Not in the base x-common-env list, so .env alone would not reach the API.
       PARSE_UPLOAD_REF_SECRET: ${PARSE_UPLOAD_REF_SECRET:-}
       MODEL_CONTEXT_TOKENS: ${MODEL_CONTEXT_TOKENS:-}
+      # Firecrawl's Go converter (RobustCodeBlock, GFM tables) is in the image
+      # but off by default; without it Turndown drops code fences and escapes
+      # code. Cloud converts with the same library.
+      USE_GO_MARKDOWN_PARSER: "true"
       # Screenshots and PDFs as files (lib/fork-files.ts), served by `files`.
       FORK_FILES_DIR: /data/files
       FORK_FILES_URL: http://localhost:3010
