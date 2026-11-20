@@ -11,6 +11,12 @@ services:
       # Not in the base x-common-env list, so .env alone would not reach the API.
       PARSE_UPLOAD_REF_SECRET: ${PARSE_UPLOAD_REF_SECRET:-}
       MODEL_CONTEXT_TOKENS: ${MODEL_CONTEXT_TOKENS:-}
+      # Screenshots and PDFs as files (lib/fork-files.ts), served by `files`.
+      FORK_FILES_DIR: /data/files
+      FORK_FILES_URL: http://localhost:3010
+      FORK_FILES_HOST_DIR: ${FORK_FILES_HOST_DIR:-}
+    volumes:
+      - ./data/files:/data/files
     depends_on:
       searxng:
         condition: service_started
@@ -47,6 +53,19 @@ services:
       options:
         max-size: "5m"
         max-file: "2"
+
+  # Serves stored screenshots and PDFs (PLAN.md Phase 5). Localhost only, read-only,
+  # no directory listing; files have random names and are deleted after 24 h.
+  files:
+    image: nginx:1.31.7-alpine
+    volumes:
+      - ./data/files:/usr/share/nginx/html:ro
+    ports:
+      - "127.0.0.1:3010:80"
+    networks:
+      - backend
+    mem_limit: 64m
+    restart: unless-stopped
 
   # Default queue is NuQ Postgres; FoundationDB only runs with `--profile fdb`.
   foundationdb:

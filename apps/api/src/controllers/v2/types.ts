@@ -1609,6 +1609,9 @@ export type Document = {
     contentType?: string;
     timezone?: string;
     proxyUsed: "basic" | "stealth";
+    // fork: absolute host paths of stored screenshots/PDFs (lib/fork-files.ts),
+    // in the same order as `screenshot`, `actions.screenshots`, `actions.pdfs`.
+    localFiles?: string[];
     cacheState?: "hit" | "miss";
     cachedAt?: string;
     creditsUsed?: number;

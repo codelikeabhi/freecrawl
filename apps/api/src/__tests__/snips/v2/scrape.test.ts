@@ -440,10 +440,11 @@ describe("Scrape tests", () => {
         identity,
       );
 
-      expect(response.screenshot).toMatch(/^data:image\/png;base64,/);
+      // fork: a data URI, or a URL when the fork's files service stores images.
+      expect(response.screenshot).toMatch(/^(data:image\/png;base64,|https?:)/);
       expect(response.actions?.screenshots).toHaveLength(1);
       expect(response.actions?.screenshots?.[0]).toMatch(
-        /^data:image\/png;base64,/,
+        /^(data:image\/png;base64,|https?:)/,
       );
       expect(response.actions?.javascriptReturns).toEqual([
         { type: "string", value: response.metadata.title },

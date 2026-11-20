@@ -6,13 +6,22 @@ import { robustFetch } from "../../lib/fetch";
 import { getInnerJson } from "@mendable/firecrawl-rs";
 import { hasFormatOfType } from "../../../../lib/format-utils";
 import { ActionError } from "../../error";
+import { storeDataUrl } from "../../../../lib/fork-files";
 
-// No bucket on a self-hosted install: return the image inline.
-const pngDataUrl = (base64: string) => `data:image/png;base64,${base64}`;
+// fork: Cloud's location picks a geo proxy; here only the browser language
+// changes. ponytail: languages[0], else English for the country.
+function browserLocale(location: Meta["options"]["location"]) {
+  if (!location) return undefined;
+  return (
+    location.languages?.[0] ??
+    (location.country ? `en-${location.country.toUpperCase()}` : undefined)
+  );
+}
 
 export async function scrapeURLWithPlaywright(
   meta: Meta,
 ): Promise<EngineScrapeResult> {
+  const locale = browserLocale(meta.options.location);
   const response = await robustFetch({
     url: config.PLAYWRIGHT_MICROSERVICE_URL!,
     headers: {
@@ -26,6 +35,9 @@ export async function scrapeURLWithPlaywright(
       skip_tls_verification: meta.options.skipTlsVerification,
       screenshot: hasFormatOfType(meta.options.formats, "screenshot"),
       actions: meta.options.actions,
+      mobile: meta.options.mobile,
+      locale,
+      block_ads: meta.options.blockAds !== false,
     },
     method: "POST",
     logger: meta.logger.child("scrapeURLWithPlaywright/robustFetch"),
@@ -44,6 +56,7 @@ export async function scrapeURLWithPlaywright(
           javascriptReturns: z.array(
             z.object({ type: z.string(), value: z.unknown() }),
           ),
+          pdfs: z.array(z.string()).optional(),
         })
         .optional(),
       actionError: z.string().optional(),
@@ -60,6 +73,26 @@ export async function scrapeURLWithPlaywright(
     throw new ActionError(response.actionError);
   }
 
+  // fork: store images and PDFs as files when the files service is set up.
+  const localFiles: string[] = [];
+  const store = async (dataUrl: string) => {
+    const { url, hostPath } = await storeDataUrl(dataUrl);
+    if (hostPath) localFiles.push(hostPath);
+    return url;
+  };
+  const screenshot = response.screenshot
+    ? await store(response.screenshot)
+    : undefined;
+  const actions = response.actions && {
+    screenshots: await Promise.all(response.actions.screenshots.map(store)),
+    scrapes: response.actions.scrapes,
+    javascriptReturns: response.actions.javascriptReturns.map(x => ({
+      type: x.type,
+      value: x.value,
+    })),
+    pdfs: await Promise.all((response.actions.pdfs ?? []).map(store)),
+  };
+
   return {
     // The landed URL reported by the service. Redirect threat and blocklist
     // re-checks compare it against the requested URL. Falls back to the
@@ -69,17 +102,11 @@ export async function scrapeURLWithPlaywright(
     statusCode: response.pageStatusCode,
     error: response.pageError,
     contentType: response.contentType,
-    screenshot: response.screenshot && pngDataUrl(response.screenshot),
-    ...(response.actions && {
-      actions: {
-        screenshots: response.actions.screenshots.map(pngDataUrl),
-        scrapes: response.actions.scrapes,
-        javascriptReturns: response.actions.javascriptReturns.map(x => ({
-          type: x.type,
-          value: x.value,
-        })),
-        pdfs: [],
-      },
+    screenshot,
+    ...(actions && { actions }),
+    ...(localFiles.length ? { localFiles } : {}),
+    ...(locale && {
+      warning: `location: the browser language is set to ${locale}, but the request still comes from this machine's IP address (no geo proxy is configured).`,
     }),
 
     proxyUsed: "basic",

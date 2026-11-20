@@ -1,6 +1,7 @@
 import express, { Request, Response } from 'express';
 import {
   chromium,
+  devices,
   Browser,
   BrowserContext,
   Route,
@@ -160,27 +161,41 @@ interface UrlModel {
   skip_tls_verification?: boolean;
   screenshot?: ScreenshotOptions;
   actions?: Action[];
+  // fork: Cloud's mobile and location options, emulated in the browser.
+  mobile?: boolean;
+  locale?: string;
+  block_ads?: boolean;
 }
 
 type ScreenshotOptions = {
   fullPage?: boolean;
   viewport?: { width: number; height: number };
+  quality?: number;
 };
 type Action = ScreenshotOptions & { type: string; [key: string]: any };
 type ActionResults = {
   screenshots: string[];
   scrapes: { url: string; html: string }[];
   javascriptReturns: { type: string; value: unknown }[];
+  pdfs: string[];
 };
 
 class ActionFailedError extends Error {}
 
+// fork: returns a data URL so the caller knows the type. `quality` only
+// exists for JPEG, so asking for it means JPEG.
 const takeScreenshot = async (
   page: Page,
-  { fullPage, viewport }: ScreenshotOptions,
+  { fullPage, viewport, quality }: ScreenshotOptions,
 ): Promise<string> => {
   if (viewport) await page.setViewportSize(viewport);
-  return (await page.screenshot({ fullPage: !!fullPage })).toString('base64');
+  const type = quality ? 'jpeg' : 'png';
+  const image = await page.screenshot({
+    fullPage: !!fullPage,
+    type,
+    ...(quality ? { quality } : {}),
+  });
+  return `data:image/${type};base64,${image.toString('base64')}`;
 };
 
 // "return document.title" is a function body, not a script. Compiling it
@@ -205,6 +220,7 @@ const runActions = async (
     screenshots: [],
     scrapes: [],
     javascriptReturns: [],
+    pdfs: [],
   };
   const timeLeft = () => {
     const ms = deadline - Date.now();
@@ -218,7 +234,10 @@ const runActions = async (
         case 'wait': {
           const ms = action.milliseconds ?? 0;
           if (action.selector) {
-            await page.waitForSelector(action.selector, { timeout });
+            // fork: Cloud gives a selector wait 30 s, other element steps 10 s.
+            await page.waitForSelector(action.selector, {
+              timeout: Math.min(timeLeft(), 30000),
+            });
           } else if (ms > timeLeft()) {
             throw new Error(`${ms} ms is past the scrape timeout`);
           } else {
@@ -268,6 +287,19 @@ const runActions = async (
           results.javascriptReturns.push({ type: typeof value, value });
           break;
         }
+        case 'pdf': {
+          // fork: print the page as it is now (headless Chromium only).
+          const pdf = await page.pdf({
+            format: action.format ?? 'Letter',
+            landscape: !!action.landscape,
+            scale: action.scale ?? 1,
+            printBackground: true,
+          });
+          results.pdfs.push(
+            `data:application/pdf;base64,${pdf.toString('base64')}`,
+          );
+          break;
+        }
         default:
           throw new Error('unsupported action type');
       }
@@ -296,13 +328,19 @@ const initializeBrowser = async () => {
   });
 };
 
+// fork: Playwright's own phone profile (viewport, UA, touch, device scale).
+// defaultBrowserType only matters to the test runner.
+const { defaultBrowserType: _phoneBrowser, ...PHONE } = devices['iPhone 13'];
+
 const createContext = async (
   skipTlsVerification: boolean = false,
   userAgentOverride?: string,
+  emulation: { mobile?: boolean; locale?: string; blockAds?: boolean } = {},
 ): Promise<{
   context: BrowserContext;
   securityState: ContextSecurityState;
 }> => {
+  const { mobile = false, locale, blockAds = true } = emulation;
   const userAgent = userAgentOverride || new UserAgent().toString();
   const viewport = { width: 1280, height: 800 };
   const securityState: ContextSecurityState = {
@@ -310,8 +348,11 @@ const createContext = async (
   };
 
   const contextOptions: any = {
-    userAgent,
-    viewport,
+    ...(mobile ? PHONE : { viewport }),
+    // A user-agent header from the request still wins over the phone's.
+    ...(userAgentOverride || !mobile ? { userAgent } : {}),
+    // Sets navigator.language and Accept-Language; the IP location is unchanged.
+    ...(locale ? { locale } : {}),
     ignoreHTTPSErrors: skipTlsVerification,
     serviceWorkers: 'block',
   };
@@ -351,7 +392,10 @@ const createContext = async (
 
       const hostname = new URL(requestUrlString).hostname.toLowerCase();
 
-      if (AD_SERVING_DOMAINS.some((domain) => hostname.includes(domain))) {
+      if (
+        blockAds &&
+        AD_SERVING_DOMAINS.some((domain) => hostname.includes(domain))
+      ) {
         console.log(hostname);
         return route.abort();
       }
@@ -506,6 +550,9 @@ app.post('/scrape', async (req: Request, res: Response) => {
     skip_tls_verification = false,
     screenshot,
     actions,
+    mobile = false,
+    locale,
+    block_ads = true,
   }: UrlModel = req.body;
 
   console.log(`================= Scrape Request =================`);
@@ -567,6 +614,7 @@ app.post('/scrape', async (req: Request, res: Response) => {
     const contextBundle = await createContext(
       skip_tls_verification,
       userAgentOverride,
+      { mobile, locale, blockAds: block_ads },
     );
     requestContext = contextBundle.context;
     securityState = contextBundle.securityState;

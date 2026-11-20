@@ -59,3 +59,6 @@ apps/api/src/lib/scrape-interact/*.md
 vitest.out
 
 tmp/
+# fork: local runtime data (screenshots, PDFs) and saved crawl output
+/data/
+/crawl-output/

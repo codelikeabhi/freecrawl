@@ -9,6 +9,7 @@ import {
   InsecureConnectionError,
 } from "../utils/safeFetch";
 import { MockState, saveMock } from "../../lib/mock";
+import { hasFormatOfType } from "../../../../lib/format-utils";
 import { TextDecoder } from "util";
 
 function decodeHtmlBuffer(
@@ -103,6 +104,9 @@ export async function scrapeURLWithFetch(
     status: number;
     headers: [string, string][];
   };
+  const wantsRawBase64 =
+    hasFormatOfType(meta.options.formats, "rawBase64") !== undefined;
+  let rawBase64: string | undefined;
 
   if (meta.fetchPrefetch !== undefined && meta.fetchPrefetch !== null) {
     const { text, charset, charsetSource, decodeError } = decodeHtmlBuffer(
@@ -162,6 +166,8 @@ export async function scrapeURLWithFetch(
       });
 
       const buf = Buffer.from(await x.arrayBuffer());
+      // fork: rawBase64 is the original body; Fire-engine served it upstream.
+      if (wantsRawBase64) rawBase64 = buf.toString("base64");
       const contentType = x.headers.get("content-type") ?? undefined;
       const { text, charset, charsetSource, decodeError } = decodeHtmlBuffer(
         buf,
@@ -212,14 +218,18 @@ export async function scrapeURLWithFetch(
     }
   }
 
-  await specialtyScrapeCheck(
-    meta.logger.child({ method: "scrapeURLWithFetch/specialtyScrapeCheck" }),
-    Object.fromEntries(response.headers as any),
-  );
+  // fork: a rawBase64 request wants the bytes as they are, not a PDF handoff.
+  if (!wantsRawBase64) {
+    await specialtyScrapeCheck(
+      meta.logger.child({ method: "scrapeURLWithFetch/specialtyScrapeCheck" }),
+      Object.fromEntries(response.headers as any),
+    );
+  }
 
   return {
     url: response.url,
     html: response.body,
+    rawBase64,
     statusCode: response.status,
     contentType:
       (response.headers.find(x => x[0].toLowerCase() === "content-type") ??

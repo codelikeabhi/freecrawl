@@ -1256,6 +1256,9 @@ async function scrapeURLLoop(meta: Meta): Promise<ScrapeUrlResponse> {
         contentType: engineResult.contentType,
         timezone: engineResult.timezone,
         proxyUsed: engineResult.proxyUsed ?? "basic",
+        ...(engineResult.localFiles
+          ? { localFiles: engineResult.localFiles }
+          : {}),
         ...(fallbackList.find(x =>
           ["index", "index;documents"].includes(x.engine),
         )

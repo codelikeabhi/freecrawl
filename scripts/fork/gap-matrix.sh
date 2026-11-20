@@ -31,7 +31,7 @@ scrape.html+raw+links+images ;; /v2/scrape ;; {"url":"$HTML","formats":["html","
 scrape.js-rendered ;; /v2/scrape ;; {"url":"$JS"} ;; .data.markdown|test("Einstein")
 scrape.waitFor ;; /v2/scrape ;; {"url":"$JS","waitFor":2000} ;; .data.markdown|test("Einstein")
 scrape.mobile ;; /v2/scrape ;; {"url":"$HTML","mobile":true} ;; (.data.markdown|length)>0 and .data.warning == null
-scrape.location ;; /v2/scrape ;; {"url":"$HTML","location":{"country":"DE"}} ;; (.data.markdown|length)>0 and .data.warning == null
+scrape.location ;; /v2/scrape ;; {"url":"$HTML","location":{"country":"DE"}} ;; (.data.markdown|length)>0 and ((.data.warning // "") | test("IP address"))
 scrape.blockAds-off ;; /v2/scrape ;; {"url":"$HTML","blockAds":false} ;; (.data.markdown|length)>0 and .data.warning == null
 scrape.redactPII ;; /v2/scrape ;; {"url":"$HTML","redactPII":true} ;; (.data.markdown|length)>0
 scrape.profile ;; /v2/scrape ;; {"url":"$HTML","profile":{"name":"fork-test"}} ;; (.data.markdown|length)>0

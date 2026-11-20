@@ -156,6 +156,8 @@ export type EngineScrapeResult = {
   error?: string;
 
   screenshot?: string;
+  // fork: host paths of stored screenshots/PDFs (lib/fork-files.ts).
+  localFiles?: string[];
   actions?: {
     screenshots: string[];
     scrapes: ScrapeActionContent[];
@@ -412,13 +414,13 @@ const engineOptions: {
       audio: false,
       video: false,
       atsv: false,
-      location: false,
-      mobile: false,
+      location: true, // fork: browser locale only; the engine adds a warning
+      mobile: true, // fork: device emulation
       skipTlsVerification: true,
       useFastMode: false,
       stealthProxy: false,
       branding: false,
-      disableAdblock: false,
+      disableAdblock: true, // fork: playwright-service skips its ad blocking
     },
     quality: 20,
   },
@@ -629,8 +631,13 @@ export async function buildFallbackList(meta: Meta): Promise<
       throw new NoCachedDataError();
     }
 
-    if (meta.options.lockdown || (!useFireEngine && meta.mock === null)) {
+    if (meta.options.lockdown) {
       return [];
+    }
+
+    // fork: without Fire-engine the fetch engine returns the original bytes.
+    if (!useFireEngine && meta.mock === null) {
+      return [{ engine: "fetch", unsupportedFeatures: new Set() }];
     }
 
     return [
