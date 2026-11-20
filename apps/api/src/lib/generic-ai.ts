@@ -17,6 +17,7 @@ import { createFederatedOpenAI } from "./openai-federation";
 import type { TeamFlags } from "../controllers/v2/types";
 import { isUsOnly } from "./us-only";
 import { UsOnlyUnavailableError } from "../scraper/scrapeURL/error";
+import { modelPrices } from "./extract/usage/model-prices";
 
 type Provider =
   | "openai"
@@ -29,6 +30,32 @@ type Provider =
   | "deepinfra"
   | "vertex";
 const defaultProvider: Provider = config.OLLAMA_BASE_URL ? "ollama" : "openai";
+
+// fork: with a local model configured (OLLAMA_BASE_URL + MODEL_NAME) every call
+// goes to it. Upstream hardcodes "openai", "vertex", "fireworks", "groq" and
+// "anthropic" in places, and without their keys those calls fail.
+const localModel =
+  config.OLLAMA_BASE_URL && config.MODEL_NAME ? config.MODEL_NAME : undefined;
+if (localModel) {
+  // Callers size prompts from this table by the model they name (llmExtract,
+  // query trims to 80% of e.g. gemini's 1M window). Every call is served by the
+  // local model here, so every entry gets its window; otherwise long pages go
+  // out untrimmed and Ollama silently cuts the prompt.
+  // MODEL_CONTEXT_TOKENS must match the model's num_ctx.
+  const contextTokens = Number(process.env.MODEL_CONTEXT_TOKENS) || 32768;
+  const limits = {
+    max_tokens: contextTokens,
+    max_input_tokens: contextTokens - 4096,
+    max_output_tokens: 4096,
+  };
+  const table = modelPrices as Record<string, Record<string, unknown>>;
+  for (const entry of Object.values(table)) Object.assign(entry, limits);
+  table[localModel] ??= {
+    ...limits,
+    input_cost_per_token: 0,
+    output_cost_per_token: 0,
+  };
+}
 
 const vertexAuthOptions = config.VERTEX_CREDENTIALS
   ? {
@@ -131,6 +158,20 @@ const usInferenceGeo: LanguageModelMiddleware = {
   }),
 };
 
+// fork: Qwen-style local models "think" before answering by default. That made
+// one JSON scrape take 80-110 s; the same answer comes back in seconds without
+// it. ponytail: always off; add a MODEL_THINKING env if a feature ever needs it.
+const noThinking: LanguageModelMiddleware = {
+  specificationVersion: "v4",
+  transformParams: async ({ params }) => ({
+    ...params,
+    providerOptions: {
+      ...params.providerOptions,
+      ollama: { think: false, ...params.providerOptions?.ollama },
+    },
+  }),
+};
+
 type ModelOptions = {
   ignoreModelOverride?: boolean;
   /**
@@ -174,6 +215,14 @@ export function getModel(
   provider: Provider = defaultProvider,
   options?: ModelOptions,
 ) {
+  if (localModel) {
+    return withUsageTelemetry(
+      wrapLanguageModel({
+        model: providerList.ollama(localModel),
+        middleware: noThinking,
+      }),
+    );
+  }
   const modelName = options?.ignoreModelOverride
     ? name
     : config.MODEL_NAME || name;

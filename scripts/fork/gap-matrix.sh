@@ -45,6 +45,9 @@ format.json-schema ;; /v2/scrape ;; {"url":"$HTML","formats":[{"type":"json","sc
 format.json-prompt ;; /v2/scrape ;; {"url":"$HTML","formats":[{"type":"json","prompt":"Extract the page title"}]} ;; .data.json != null
 format.question ;; /v2/scrape ;; {"url":"$HTML","formats":[{"type":"question","question":"What is this domain for?"}]} ;; .data.answer != null
 format.highlights ;; /v2/scrape ;; {"url":"$HTML","formats":[{"type":"highlights","query":"documentation examples"}]} ;; .data.highlights != null
+format.onlyCleanContent ;; /v2/scrape ;; {"url":"$HTML","onlyCleanContent":true} ;; (.data.markdown|length)>0 and .success == true
+format.checkPromptInjection ;; /v2/scrape ;; {"url":"$HTML","checkPromptInjection":true} ;; .success == true and ((.data.warning // "") | test("could not scan") | not)
+crawl.prompt-preview ;; /v2/crawl/params-preview ;; {"url":"$NOSITEMAP","prompt":"Only crawl the poetry category, at most 10 pages"} ;; .success == true and (.data | tostring | test("poetry";"i"))
 format.changeTracking ;; /v2/scrape ;; {"url":"$HTML","formats":["markdown",{"type":"changeTracking","modes":["git-diff"]}]} ;; .data.changeTracking != null
 format.branding ;; /v2/scrape ;; {"url":"$HTML","formats":["branding"]} ;; .data.branding != null
 format.product ;; /v2/scrape ;; {"url":"https://books.toscrape.com/catalogue/a-light-in-the-attic_1000/index.html","formats":["product"]} ;; .data.product != null

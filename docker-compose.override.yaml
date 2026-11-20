@@ -10,6 +10,7 @@ services:
     environment:
       # Not in the base x-common-env list, so .env alone would not reach the API.
       PARSE_UPLOAD_REF_SECRET: ${PARSE_UPLOAD_REF_SECRET:-}
+      MODEL_CONTEXT_TOKENS: ${MODEL_CONTEXT_TOKENS:-}
     depends_on:
       searxng:
         condition: service_started
