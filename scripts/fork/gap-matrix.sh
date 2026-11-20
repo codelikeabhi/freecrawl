@@ -24,6 +24,7 @@ CF2=https://www.crunchbase.com
 
 # name ;; method path ;; JSON body ;; jq evidence (true = feature output present)
 # Paths starting with "async " are polled at GET <path>/<id> until done (max 120 s).
+# Paths starting with "get " are GET requests; the body column is the query string.
 CASES=$(cat <<EOF
 scrape.markdown ;; /v2/scrape ;; {"url":"$HTML"} ;; (.data.markdown|length)>0
 scrape.html+raw+links+images ;; /v2/scrape ;; {"url":"$HTML","formats":["html","rawHtml","links","images"]} ;; (.data.html|length)>0 and (.data.rawHtml|length)>0 and (.data.links|length)>0
@@ -72,6 +73,13 @@ search.images ;; /v2/search ;; {"query":"web scraping","limit":5,"sources":["ima
 search.developer ;; /v2/search ;; {"query":"playwright click selector timeout","limit":5,"categories":["developer"]} ;; (.data.web|length)>0
 search.research ;; /v2/search ;; {"query":"transformer attention","limit":5,"categories":["research"]} ;; (.data.web|length)>0
 search.location ;; /v2/search ;; {"query":"weather","limit":5,"location":"Germany"} ;; (.data.web|length)>0
+search.gov ;; /v2/search ;; {"query":"food labeling requirements","limit":5,"categories":["gov"]} ;; (.data.web|length)>0
+index.papers ;; get /v2/search/research/papers ;; query=attention%20is%20all%20you%20need&k=2 ;; (.results|length)>0
+index.paper-read ;; get /v2/search/research/papers/1706.03762 ;; query=multi-head%20attention&k=2 ;; (.passages|length)>0
+index.similar ;; get /v2/search/research/papers/1706.03762/similar ;; intent=efficient%20transformers&k=3 ;; (.results|length)>0
+index.protein ;; get /v2/search/research/proteins ;; protein=TP53 ;; .match == "found"
+index.developer ;; /v2/search/developer ;; {"query":"graceful shutdown","k":3} ;; (.results|length)>0
+index.gov ;; /v2/search/gov ;; {"query":"food labeling requirements","k":3,"sources":["web","gov"]} ;; (.data.gov|length)>0
 map.sitemap ;; /v2/map ;; {"url":"https://docs.firecrawl.dev","limit":20} ;; (.links|length)>0
 map.no-sitemap ;; /v2/map ;; {"url":"$NOSITEMAP","limit":20} ;; (.links|length)>0
 map.search-param ;; /v2/map ;; {"url":"https://docs.firecrawl.dev","search":"crawl","limit":10} ;; (.links|length)>0
@@ -96,12 +104,17 @@ while IFS= read -r line; do
   body=$(field "$line"); evidence=${line#* ;; }
   [[ $name =~ $FILTER ]] || continue
 
-  async=0
+  async=0 get=0
   [[ $path == async\ * ]] && async=1 && path=${path#async }
+  [[ $path == get\ * ]] && get=1 && path=${path#get }
   path=${path//\{SCRAPE_ID\}/${scrape_id:-none}}
 
-  resp=$(curl -sS --max-time 150 -w $'\n%{http_code}' -X POST "$API$path" \
-    -H 'Content-Type: application/json' -d "$body" 2>&1)
+  if [[ $get == 1 ]]; then
+    resp=$(curl -sS --max-time 150 -w $'\n%{http_code}' "$API$path?$body" 2>&1)
+  else
+    resp=$(curl -sS --max-time 150 -w $'\n%{http_code}' -X POST "$API$path" \
+      -H 'Content-Type: application/json' -d "$body" 2>&1)
+  fi
   http=${resp##*$'\n'}; resp=${resp%$'\n'*}
 
   if [[ $async == 1 ]] && id=$(jq -er '.id' <<<"$resp" 2>/dev/null); then

@@ -28,6 +28,10 @@ services:
       IMAGE_OCR_ENABLED: ${IMAGE_OCR_ENABLED:-}
       PDF_RUST_EXTRACT_ENABLE: ${PDF_RUST_EXTRACT_ENABLE:-}
       PARSE_PDF_ALWAYS_FIRE_PDF: ${PARSE_PDF_ALWAYS_FIRE_PDF:-}
+      # Research, developer and gov search (PLAN.md Phase 3b): our `indexes`
+      # service speaks both contracts the API forwards to.
+      RESEARCH_PROXY_URL: ${RESEARCH_PROXY_URL:-}
+      SEARCH_PLATFORM_URL: ${SEARCH_PLATFORM_URL:-}
     volumes:
       - ./data/files:/data/files
     depends_on:
@@ -70,6 +74,22 @@ services:
       options:
         max-size: "5m"
         max-file: "2"
+
+  # Research, developer and gov indexes over free public APIs (PLAN.md Phase 3b).
+  # Backend network only; calls arXiv, OpenAlex, UniProt, GitHub, Stack
+  # Exchange, eCFR and the Federal Register, cached in Redis.
+  indexes:
+    build: apps/index-service
+    environment:
+      SEARXNG_URL: http://searxng:8080
+      FIRECRAWL_URL: http://api:3002
+      REDIS_URL: redis://redis:6379
+      # Optional: raises GitHub search from 10 to 30 requests a minute.
+      GITHUB_TOKEN: ${FORK_GITHUB_TOKEN:-}
+    networks:
+      - backend
+    mem_limit: 256m
+    restart: unless-stopped
 
   # Serves stored screenshots and PDFs (PLAN.md Phase 5). Localhost only, read-only,
   # no directory listing; files have random names and are deleted after 24 h.

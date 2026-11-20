@@ -1,0 +1,5 @@
+# fork: research, developer and gov indexes (PLAN.md Phase 3b)
+fastapi>=0.115,<1
+uvicorn>=0.30,<1
+httpx>=0.27,<1
+redis>=5,<7
