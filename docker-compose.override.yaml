@@ -19,6 +19,15 @@ services:
       FORK_FILES_HOST_DIR: ${FORK_FILES_HOST_DIR:-}
       # Host-native stealth engine (scripts/fork/stealth.sh), PLAN.md Phase 6.
       FORK_STEALTH_URL: ${FORK_STEALTH_URL:-}
+      # OCR (PLAN.md Phase 8, D6): our MinerU service speaks FirePDF's /ocr
+      # (scripts/fork/ocr.sh). Text-layer PDFs stay on the fast Rust path;
+      # only PDFs that need OCR, and images, go to it.
+      FIRE_PDF_ENABLE: ${FIRE_PDF_ENABLE:-}
+      FIRE_PDF_BASE_URL: ${FIRE_PDF_BASE_URL:-}
+      FIRE_PDF_PERCENT: ${FIRE_PDF_PERCENT:-}
+      IMAGE_OCR_ENABLED: ${IMAGE_OCR_ENABLED:-}
+      PDF_RUST_EXTRACT_ENABLE: ${PDF_RUST_EXTRACT_ENABLE:-}
+      PARSE_PDF_ALWAYS_FIRE_PDF: ${PARSE_PDF_ALWAYS_FIRE_PDF:-}
     volumes:
       - ./data/files:/data/files
     depends_on:

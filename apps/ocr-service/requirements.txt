@@ -1,0 +1,9 @@
+# fork: OCR service (PLAN.md Phase 8). MinerU 2.x, as pinned by firecrawl/mineru-api.
+mineru[pipeline]>=2.6.6,<3
+fastapi
+uvicorn>=0.30
+pypdf
+pillow
+# Ultralytics (MinerU's formula detector) needs it and would otherwise
+# pip-install it at runtime.
+pi-heif

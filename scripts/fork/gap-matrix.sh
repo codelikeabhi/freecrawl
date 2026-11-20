@@ -17,7 +17,6 @@ HTML=https://example.com
 JS=https://quotes.toscrape.com/js/          # quotes rendered by JavaScript
 PDF=https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf
 DOCX=https://calibre-ebook.com/downloads/demos/demo.docx
-PNG=https://httpbin.org/image/png
 YT="https://www.youtube.com/watch?v=jNQXAC9IVRw"   # "Me at the zoo", 19 s
 NOSITEMAP=https://books.toscrape.com/
 CF1=https://nowsecure.nl                        # Cloudflare challenge test page
@@ -59,9 +58,7 @@ actions.screenshot ;; /v2/scrape ;; {"url":"$HTML","actions":[{"type":"screensho
 actions.executeJavascript ;; /v2/scrape ;; {"url":"$HTML","actions":[{"type":"executeJavascript","script":"return document.title"}]} ;; (.data.actions.javascriptReturns|length)>0
 actions.pdf ;; /v2/scrape ;; {"url":"$HTML","actions":[{"type":"pdf"}]} ;; (.data.actions.pdfs|length)>0
 file.pdf ;; /v2/scrape ;; {"url":"$PDF"} ;; .data.markdown|test("Dummy")
-file.pdf-ocr ;; /v2/scrape ;; {"url":"$PDF","parsers":[{"type":"pdf","mode":"ocr"}]} ;; .data.markdown|test("Dummy")
 file.docx ;; /v2/scrape ;; {"url":"$DOCX"} ;; (.data.markdown|length)>100
-file.image-ocr ;; /v2/scrape ;; {"url":"$PNG"} ;; (.data.markdown|length)>0
 youtube.page ;; /v2/scrape ;; {"url":"$YT"} ;; (.data.markdown|length)>200
 protected.nowsecure ;; /v2/scrape ;; {"url":"$CF1"} ;; .data.metadata.statusCode == 200 and (.data.markdown|test("Just a moment|challenge|Verifying";"i")|not)
 protected.crunchbase ;; /v2/scrape ;; {"url":"$CF2"} ;; .data.metadata.statusCode == 200 and (.data.markdown|test("Just a moment|challenge|Verifying";"i")|not)
@@ -121,15 +118,26 @@ while IFS= read -r line; do
   printf '%-30s %-4s %-4s %s\n' "$name" "$http" "$res" "$(note "$resp")"
 done <<<"$CASES"
 
-# /v2/parse takes a multipart upload, so it gets its own call.
-if [[ parse.upload =~ $FILTER ]]; then
-  f="$OUT/sample.html"; printf '<html><body><h1>Hello parse</h1><p>Local file.</p></body></html>' >"$f"
-  resp=$(curl -sS --max-time 120 -w $'\n%{http_code}' -X POST "$API/v2/parse" -F "file=@$f;type=text/html")
+# /v2/parse takes a multipart upload, so uploads get their own calls.
+#   upload <name> <file> <content-type> <jq evidence> [options JSON]
+upload() {
+  [[ $1 =~ $FILTER ]] || return 0
+  local resp http res opts=()
+  [[ -n ${5:-} ]] && opts=(-F "options=$5")
+  resp=$(curl -sS --max-time 300 -w $'\n%{http_code}' -X POST "$API/v2/parse" -F "file=@$2;type=$3" ${opts[@]+"${opts[@]}"})
   http=${resp##*$'\n'}; resp=${resp%$'\n'*}
-  printf '%s\n' "$resp" >"$OUT/parse.upload.json"
-  [[ $(jq -r '.data.markdown|test("Hello parse")' <<<"$resp" 2>/dev/null) == true ]] && res=OK || res=FAIL
-  printf '%-30s %-4s %-4s %s\n' parse.upload "$http" "$res" "$(note "$resp")"
-fi
+  printf '%s\n' "$resp" >"$OUT/$1.json"
+  [[ $(jq -r "$4" <<<"$resp" 2>/dev/null) == true ]] && res=OK || res=FAIL
+  printf '%-30s %-4s %-4s %s\n' "$1" "$http" "$res" "$(note "$resp")"
+}
+f="$OUT/sample.html"; printf '<html><body><h1>Hello parse</h1><p>Local file.</p></body></html>' >"$f"
+upload parse.upload "$f" text/html '.data.markdown|test("Hello parse")'
+# OCR (Phase 8): a scanned PDF with no text layer, and a PNG of the same page.
+SCANNED="$(dirname "$0")/../../apps/api/src/__tests__/snips/fixtures/parse-scanned.pdf"
+upload file.pdf-ocr "$SCANNED" application/pdf '.data.markdown|test("Valve 7")' \
+  '{"parsers":[{"type":"pdf","mode":"auto","pages":true}]}'
+sips -s format png "$SCANNED" --out "$OUT/scanned.png" >/dev/null 2>&1
+upload file.image-ocr "$OUT/scanned.png" image/png '.data.markdown|test("Valve 7")'
 
 # Three-step flow: ask for an upload URL, PUT the file, parse by reference.
 if [[ parse.upload-url =~ $FILTER ]]; then
