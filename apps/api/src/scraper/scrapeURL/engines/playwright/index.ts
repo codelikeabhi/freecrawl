@@ -18,12 +18,31 @@ function browserLocale(location: Meta["options"]["location"]) {
   );
 }
 
-export async function scrapeURLWithPlaywright(
+export function scrapeURLWithPlaywright(
   meta: Meta,
 ): Promise<EngineScrapeResult> {
-  const locale = browserLocale(meta.options.location);
+  return scrapeWithBrowserService(
+    meta,
+    config.PLAYWRIGHT_MICROSERVICE_URL!,
+    false,
+  );
+}
+
+// fork: the stealth engine is the same service run on the host in stealth
+// mode (apps/stealth-engine): Patchright + installed Chrome, persistent
+// profiles. It ignores mobile/locale/blockAds; it takes `profile`.
+export function scrapeURLWithStealth(meta: Meta): Promise<EngineScrapeResult> {
+  return scrapeWithBrowserService(meta, process.env.FORK_STEALTH_URL!, true);
+}
+
+async function scrapeWithBrowserService(
+  meta: Meta,
+  serviceUrl: string,
+  stealth: boolean,
+): Promise<EngineScrapeResult> {
+  const locale = stealth ? undefined : browserLocale(meta.options.location);
   const response = await robustFetch({
-    url: config.PLAYWRIGHT_MICROSERVICE_URL!,
+    url: serviceUrl,
     headers: {
       "Content-Type": "application/json",
     },
@@ -38,6 +57,9 @@ export async function scrapeURLWithPlaywright(
       mobile: meta.options.mobile,
       locale,
       block_ads: meta.options.blockAds !== false,
+      ...(stealth && meta.options.profile
+        ? { profile: meta.options.profile.name }
+        : {}),
     },
     method: "POST",
     logger: meta.logger.child("scrapeURLWithPlaywright/robustFetch"),
@@ -109,7 +131,7 @@ export async function scrapeURLWithPlaywright(
       warning: `location: the browser language is set to ${locale}, but the request still comes from this machine's IP address (no geo proxy is configured).`,
     }),
 
-    proxyUsed: "basic",
+    proxyUsed: stealth ? "stealth" : "basic",
   };
 }
 
@@ -121,6 +143,11 @@ function landedHttpUrl(url: string | undefined): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+// fork: headful Chrome plus the per-site politeness pause take longer.
+export function stealthMaxReasonableTime(meta: Meta): number {
+  return playwrightMaxReasonableTime(meta) + 15000;
 }
 
 export function playwrightMaxReasonableTime(meta: Meta): number {

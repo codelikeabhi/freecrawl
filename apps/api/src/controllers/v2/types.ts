@@ -1612,6 +1612,9 @@ export type Document = {
     // fork: absolute host paths of stored screenshots/PDFs (lib/fork-files.ts),
     // in the same order as `screenshot`, `actions.screenshots`, `actions.pdfs`.
     localFiles?: string[];
+    // fork: the page looks like a block or bot wall (scrapeURL/lib/fork-blocked.ts).
+    blocked?: boolean;
+    blockedReason?: string;
     cacheState?: "hit" | "miss";
     cachedAt?: string;
     creditsUsed?: number;

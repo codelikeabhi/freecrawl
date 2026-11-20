@@ -1,7 +1,5 @@
 import express, { Request, Response } from 'express';
-import {
-  chromium,
-  devices,
+import type {
   Browser,
   BrowserContext,
   Route,
@@ -9,6 +7,7 @@ import {
   Page,
   Response as PlaywrightResponse,
 } from 'playwright';
+import path from 'path';
 import { Script } from 'vm';
 import dotenv from 'dotenv';
 import UserAgent from 'user-agents';
@@ -17,6 +16,16 @@ import { Server } from 'proxy-chain';
 import { isInternalHost, ssrfPrepareRequest } from './helpers/ssrf';
 
 dotenv.config();
+
+// fork: stealth mode (PLAN.md Phase 6). apps/stealth-engine runs this file on
+// the host with STEALTH=true: Patchright (same API as Playwright) drives the
+// installed Chrome, headful, in a persistent profile.
+const STEALTH = (process.env.STEALTH || 'False').toUpperCase() === 'TRUE';
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const pw: typeof import('playwright') = require(STEALTH ? 'patchright' : 'playwright');
+const { chromium, devices } = pw;
+const STEALTH_PROFILE_DIR =
+  process.env.STEALTH_PROFILE_DIR || path.resolve('stealth-profiles');
 
 const app = express();
 const port = process.env.PORT || 3003;
@@ -165,6 +174,8 @@ interface UrlModel {
   mobile?: boolean;
   locale?: string;
   block_ads?: boolean;
+  // fork: stealth mode only; the named persistent profile (logins survive).
+  profile?: string;
 }
 
 type ScreenshotOptions = {
@@ -281,9 +292,15 @@ const runActions = async (
           break;
         case 'executeJavascript': {
           const { script } = action;
-          const value = await page.evaluate(
-            parsesAsScript(script) ? script : `(async () => { ${script} })()`,
-          );
+          const expression = parsesAsScript(script)
+            ? script
+            : `(async () => { ${script} })()`;
+          // fork: Patchright evaluates in an isolated world by default. Its
+          // signature is evaluate(fn, arg, options, isolatedContext); false
+          // runs in the page so its globals are visible.
+          const value = STEALTH
+            ? await (page.evaluate as any)(expression, undefined, undefined, false)
+            : await page.evaluate(expression);
           results.javascriptReturns.push({ type: typeof value, value });
           break;
         }
@@ -362,7 +379,17 @@ const createContext = async (
   };
 
   const newContext = await browser.newContext(contextOptions);
+  await guardContext(newContext, securityState, blockAds);
+  return { context: newContext, securityState };
+};
 
+// Blocks private/internal targets (SSRF) and, unless turned off, ad domains.
+// fork: shared by per-request contexts and stealth mode's persistent ones.
+const guardContext = async (
+  newContext: BrowserContext,
+  securityState: ContextSecurityState,
+  blockAds: boolean,
+) => {
   if (BLOCK_MEDIA) {
     await newContext.route(
       '**/*.{png,jpg,jpeg,gif,svg,mp3,mp4,avi,flac,ogg,wav,webm}',
@@ -402,8 +429,58 @@ const createContext = async (
       return route.continue();
     },
   );
+};
 
-  return { context: newContext, securityState };
+// fork: stealth mode keeps one persistent Chrome profile per name, so cookies
+// and history build up like a real browser's. Headful (fewer fingerprint
+// tells) but off-screen. No custom user agent, viewport or headers, as
+// Patchright recommends. ponytail: the SSRF flag is shared by the profile's
+// pages; fine at stealth concurrency (1 page per site, MAX_CONCURRENT_PAGES 2).
+const stealthProfiles = new Map<
+  string,
+  Promise<{ context: BrowserContext; securityState: ContextSecurityState }>
+>();
+const stealthContext = (profile: string) => {
+  let entry = stealthProfiles.get(profile);
+  if (!entry) {
+    entry = (async () => {
+      const context = await chromium.launchPersistentContext(
+        path.join(STEALTH_PROFILE_DIR, profile),
+        {
+          channel: 'chrome',
+          headless: false,
+          viewport: null,
+          args: ['--window-position=-32000,-32000'],
+          proxy: { server: `http://127.0.0.1:${ssrfProxyPort}` },
+        },
+      );
+      const securityState: ContextSecurityState = {
+        blockedNavigationRequestUrl: null,
+      };
+      await guardContext(context, securityState, true);
+      context.on('close', () => stealthProfiles.delete(profile));
+      return { context, securityState };
+    })();
+    entry.catch(() => stealthProfiles.delete(profile));
+    stealthProfiles.set(profile, entry);
+  }
+  return entry;
+};
+
+// fork: one page at a time per site, then a 1-3 s pause, so the home IP is
+// not banned (PLAN.md Phase 6 politeness). Returns the release function.
+const siteQueues = new Map<string, Promise<void>>();
+const takeSiteTurn = async (url: string): Promise<() => void> => {
+  const host = new URL(url).hostname;
+  const previous = siteQueues.get(host) ?? Promise.resolve();
+  let release!: () => void;
+  const mine = new Promise<void>((resolve) => (release = resolve));
+  siteQueues.set(
+    host,
+    previous.then(() => mine),
+  );
+  await previous;
+  return () => setTimeout(release, 1000 + Math.random() * 2000);
 };
 
 const shutdownBrowser = async () => {
@@ -437,6 +514,16 @@ const scrapePage = async (
   );
   const deadline = Date.now() + timeout;
   let response: PlaywrightResponse | null;
+  // fork: real Chrome (stealth mode) refuses to render an error status with
+  // an empty body (net::ERR_HTTP_RESPONSE_CODE_FAILURE). Keep the main-frame
+  // response so that status is reported instead of failing the scrape.
+  let navigation: PlaywrightResponse | null = null;
+  const onNavigation = (r: PlaywrightResponse) => {
+    if (r.request().isNavigationRequest() && r.frame() === page.mainFrame()) {
+      navigation = r;
+    }
+  };
+  page.on('response', onNavigation);
   try {
     response = await page.goto(url, { waitUntil, timeout });
   } catch (error) {
@@ -446,7 +533,16 @@ const scrapePage = async (
         'navigation to private/internal resource is not allowed',
       );
     }
-    throw error;
+    if (
+      navigation &&
+      String(error).includes('ERR_HTTP_RESPONSE_CODE_FAILURE')
+    ) {
+      response = navigation;
+    } else {
+      throw error;
+    }
+  } finally {
+    page.off('response', onNavigation);
   }
 
   if (waitAfterLoad > 0) {
@@ -517,17 +613,24 @@ const scrapePage = async (
 
 app.get('/health', async (req: Request, res: Response) => {
   try {
-    if (!browser) {
-      await initializeBrowser();
-    }
+    if (STEALTH) {
+      // fork: the default profile opens (or is already open) and takes a page.
+      const testPage = await (await stealthContext('default')).context.newPage();
+      await testPage.close();
+    } else {
+      if (!browser) {
+        await initializeBrowser();
+      }
 
-    const { context: testContext } = await createContext();
-    const testPage = await testContext.newPage();
-    await testPage.close();
-    await testContext.close();
+      const { context: testContext } = await createContext();
+      const testPage = await testContext.newPage();
+      await testPage.close();
+      await testContext.close();
+    }
 
     res.status(200).json({
       status: 'healthy',
+      ...(STEALTH ? { mode: 'stealth' } : {}),
       maxConcurrentPages: MAX_CONCURRENT_PAGES,
       activePages: MAX_CONCURRENT_PAGES - pageSemaphore.getAvailablePermits(),
     });
@@ -553,7 +656,12 @@ app.post('/scrape', async (req: Request, res: Response) => {
     mobile = false,
     locale,
     block_ads = true,
+    profile = 'default',
   }: UrlModel = req.body;
+
+  if (STEALTH && !/^[A-Za-z0-9_-]{1,64}$/.test(profile)) {
+    return res.status(400).json({ error: 'Invalid profile name' });
+  }
 
   console.log(`================= Scrape Request =================`);
   console.log(`URL: ${url}`);
@@ -591,11 +699,12 @@ app.post('/scrape', async (req: Request, res: Response) => {
     );
   }
 
-  if (!browser) {
+  if (!browser && !STEALTH) {
     await initializeBrowser();
   }
 
   await pageSemaphore.acquire();
+  const releaseSite = STEALTH ? await takeSiteTurn(url) : () => {};
 
   let requestContext: BrowserContext | null = null;
   let securityState: ContextSecurityState | null = null;
@@ -611,17 +720,25 @@ app.post('/scrape', async (req: Request, res: Response) => {
         )?.[1]
       : undefined;
 
-    const contextBundle = await createContext(
-      skip_tls_verification,
-      userAgentOverride,
-      { mobile, locale, blockAds: block_ads },
-    );
-    requestContext = contextBundle.context;
-    securityState = contextBundle.securityState;
-    page = await requestContext.newPage();
+    if (STEALTH) {
+      // fork: the profile's long-lived context; only the page is per request.
+      const stealth = await stealthContext(profile);
+      securityState = stealth.securityState;
+      page = await stealth.context.newPage();
+    } else {
+      const contextBundle = await createContext(
+        skip_tls_verification,
+        userAgentOverride,
+        { mobile, locale, blockAds: block_ads },
+      );
+      requestContext = contextBundle.context;
+      securityState = contextBundle.securityState;
+      page = await requestContext.newPage();
+    }
     if (screenshot?.viewport) await page.setViewportSize(screenshot.viewport);
 
-    if (headers) {
+    // fork: stealth mode sends no custom headers (Patchright's advice).
+    if (headers && !STEALTH) {
       // A Cookie header passed through setExtraHTTPHeaders is sent on the first
       // request but DROPPED on any redirect hop (the browser regenerates the
       // redirected request from its cookie jar, which is empty). Authenticated
@@ -671,7 +788,7 @@ app.post('/scrape', async (req: Request, res: Response) => {
           .filter((c): c is SeedCookie => c !== null);
         if (cookies.length > 0) {
           try {
-            await requestContext.addCookies(cookies);
+            await page.context().addCookies(cookies);
           } catch (error) {
             console.warn('Failed to seed cookies from Cookie header:', error);
           }
@@ -741,15 +858,20 @@ app.post('/scrape', async (req: Request, res: Response) => {
     if (page) await page.close();
     if (requestContext) await requestContext.close();
     pageSemaphore.release();
+    releaseSite();
   }
 });
 
 const start = async () => {
   ssrfProxyPort = await startSSRFProxy();
-  await initializeBrowser();
-  app.listen(port, () => {
-    console.log(`Server is running on port ${port}`);
-  });
+  // fork: stealth mode opens its persistent profiles on first use instead.
+  if (!STEALTH) await initializeBrowser();
+  // fork: HOST lets the host-native stealth engine bind to 127.0.0.1 only.
+  const host = process.env.HOST;
+  const onListen = () =>
+    console.log(`Server is running on ${host ?? ''}:${port}${STEALTH ? ' (stealth mode)' : ''}`);
+  if (host) app.listen(Number(port), host, onListen);
+  else app.listen(port, onListen);
 };
 start().catch((error) => {
   console.error('Failed to start server:', error);

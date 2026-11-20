@@ -17,6 +17,8 @@ services:
       FORK_FILES_DIR: /data/files
       FORK_FILES_URL: http://localhost:3010
       FORK_FILES_HOST_DIR: ${FORK_FILES_HOST_DIR:-}
+      # Host-native stealth engine (scripts/fork/stealth.sh), PLAN.md Phase 6.
+      FORK_STEALTH_URL: ${FORK_STEALTH_URL:-}
     volumes:
       - ./data/files:/data/files
     depends_on:

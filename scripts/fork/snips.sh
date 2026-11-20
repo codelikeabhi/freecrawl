@@ -27,5 +27,5 @@ docker run --rm --network firecrawl_backend \
   -e REDIS_URL=redis://redis:6379 \
   -e REDIS_RATE_LIMIT_URL=redis://redis:6379 \
   -e PLAYWRIGHT_MICROSERVICE_URL=http://playwright-service:3000/scrape \
-  $(env_from_dotenv 'SEARXNG_ENDPOINT|OPENAI_API_KEY|OPENAI_BASE_URL|OLLAMA_BASE_URL|MODEL_NAME') \
+  $(env_from_dotenv 'SEARXNG_ENDPOINT|OPENAI_API_KEY|OPENAI_BASE_URL|OLLAMA_BASE_URL|MODEL_NAME|FORK_STEALTH_URL') \
   firecrawl-api-test pnpm exec vitest run "$@"

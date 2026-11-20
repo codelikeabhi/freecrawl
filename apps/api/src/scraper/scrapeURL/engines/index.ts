@@ -14,6 +14,8 @@ import { fetchMaxReasonableTime, scrapeURLWithFetch } from "./fetch";
 import {
   playwrightMaxReasonableTime,
   scrapeURLWithPlaywright,
+  scrapeURLWithStealth,
+  stealthMaxReasonableTime,
 } from "./playwright";
 import { indexMaxReasonableTime, scrapeURLWithIndex } from "./index/index";
 import {
@@ -58,6 +60,7 @@ export type Engine =
   | "fire-engine;tlsclient"
   | "fire-engine;tlsclient;stealth"
   | "playwright"
+  | "stealth"
   | "fetch"
   | "pdf"
   | "document"
@@ -69,6 +72,8 @@ export type Engine =
 const usePlaywright =
   config.PLAYWRIGHT_MICROSERVICE_URL !== "" &&
   config.PLAYWRIGHT_MICROSERVICE_URL !== undefined;
+// fork: the host-native stealth engine (apps/stealth-engine, PLAN.md Phase 6).
+const useStealth = !!process.env.FORK_STEALTH_URL;
 const useWikipedia =
   config.WIKIPEDIA_ENTERPRISE_USERNAME !== undefined &&
   config.WIKIPEDIA_ENTERPRISE_USERNAME !== "" &&
@@ -89,6 +94,7 @@ const engines: Engine[] = [
       ]
     : []),
   ...(usePlaywright ? ["playwright" as const] : []),
+  ...(useStealth ? ["stealth" as const] : []),
   "fetch",
   "pdf",
   "document",
@@ -158,6 +164,8 @@ export type EngineScrapeResult = {
   screenshot?: string;
   // fork: host paths of stored screenshots/PDFs (lib/fork-files.ts).
   localFiles?: string[];
+  // fork: why the page looks blocked (lib/fork-blocked.ts), if it does.
+  blockedReason?: string;
   actions?: {
     screenshots: string[];
     scrapes: ScrapeActionContent[];
@@ -205,6 +213,7 @@ const engineHandlers: {
   "fire-engine;tlsclient": scrapeURLWithFireEngineTLSClient,
   "fire-engine;tlsclient;stealth": scrapeURLWithFireEngineTLSClient,
   playwright: scrapeURLWithPlaywright,
+  stealth: scrapeURLWithStealth,
   fetch: scrapeURLWithFetch,
   pdf: scrapePDF,
   document: scrapeDocument,
@@ -231,6 +240,7 @@ const engineMRTs: {
   "fire-engine;tlsclient;stealth": meta =>
     fireEngineMaxReasonableTime(meta, "tlsclient"),
   playwright: playwrightMaxReasonableTime,
+  stealth: stealthMaxReasonableTime,
   fetch: fetchMaxReasonableTime,
   pdf: pdfMaxReasonableTime,
   document: documentMaxReasonableTime,
@@ -423,6 +433,31 @@ const engineOptions: {
       disableAdblock: true, // fork: playwright-service skips its ad blocking
     },
     quality: 20,
+  },
+  // fork: real Chrome via Patchright on the host. Negative quality: used only
+  // when stealth is asked for (proxy stealth/enhanced), escalated to (blocked
+  // page with proxy auto), or required (profile).
+  stealth: {
+    features: {
+      actions: true,
+      waitFor: true,
+      screenshot: true,
+      "screenshot@fullScreen": true,
+      pdf: false,
+      document: false,
+      image: false,
+      audio: false,
+      video: false,
+      atsv: false,
+      location: false,
+      mobile: false,
+      skipTlsVerification: false,
+      useFastMode: false,
+      stealthProxy: true,
+      branding: false,
+      disableAdblock: false,
+    },
+    quality: -3,
   },
   "fire-engine;tlsclient": {
     features: {
@@ -954,7 +989,8 @@ export async function buildFallbackList(meta: Meta): Promise<
   // stealthProxy support. Counting the flag would leave only the file parsers
   // above the threshold and in the stealth-only narrowing below, so an HTML
   // page that escalated to stealthProxy would fail on every engine.
-  const scoresStealthProxy = useFireEngine || meta.mock !== null;
+  // fork: the stealth engine fetches through real Chrome, so it counts too.
+  const scoresStealthProxy = useFireEngine || meta.mock !== null || useStealth;
   const isScoredFlag = (flag: FeatureFlag) =>
     scoresStealthProxy || flag !== "stealthProxy";
 
@@ -986,6 +1022,7 @@ export async function buildFallbackList(meta: Meta): Promise<
     if (
       meta.options.profile &&
       !engine.includes("chrome-cdp") &&
+      engine !== "stealth" && // fork: persistent profiles live in stealth mode
       !(engine === "pdf" && meta.pdfPrefetch) &&
       !(engine === "document" && meta.documentPrefetch) &&
       !(engine === "image" && meta.imagePrefetch)

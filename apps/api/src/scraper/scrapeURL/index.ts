@@ -27,6 +27,7 @@ import {
   shouldUseIndex,
 } from "./engines";
 import { applyHandoffFeatureFlags } from "./lib/handoffFeatureFlags";
+import { blockedReason } from "./lib/fork-blocked";
 import { parseMarkdown } from "../../lib/html-to-markdown";
 import { hasFormatOfType } from "../../lib/format-utils";
 import {
@@ -791,9 +792,21 @@ async function scrapeURLLoopIter(
     const isLikelyProxyError = [401, 403, 429].includes(
       engineResult.statusCode,
     );
+    // fork: bot walls often answer 200 with a challenge page. Report the
+    // block in metadata, and escalate on it too when a stealth engine exists.
+    const blocked = hasRawBase64
+      ? undefined
+      : blockedReason(
+          engineResult.statusCode,
+          engineResult.html,
+          checkMarkdown,
+        );
+    if (blocked) engineResult.blockedReason = blocked;
+    const stealthAvailable =
+      !!process.env.FORK_STEALTH_URL || !!config.FIRE_ENGINE_BETA_URL;
 
     if (
-      isLikelyProxyError &&
+      (isLikelyProxyError || (blocked !== undefined && stealthAvailable)) &&
       meta.options.proxy === "auto" &&
       !meta.featureFlags.has("stealthProxy")
     ) {
@@ -1258,6 +1271,9 @@ async function scrapeURLLoop(meta: Meta): Promise<ScrapeUrlResponse> {
         proxyUsed: engineResult.proxyUsed ?? "basic",
         ...(engineResult.localFiles
           ? { localFiles: engineResult.localFiles }
+          : {}),
+        ...(engineResult.blockedReason
+          ? { blocked: true, blockedReason: engineResult.blockedReason }
           : {}),
         ...(fallbackList.find(x =>
           ["index", "index;documents"].includes(x.engine),
