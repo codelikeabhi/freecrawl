@@ -55,6 +55,9 @@ services:
       AVGRAB_SERVICE_URL: ${AVGRAB_SERVICE_URL:-}
       # redactPII (PLAN.md Phase 11, D7): Presidio behind fire-privacy's /redact.
       FIRE_PRIVACY_URL: ${FIRE_PRIVACY_URL:-}
+      # Upstream allows 5 s per chunk, sized for a fleet of pods; one local
+      # Presidio process takes chunks in turn, so under load the third timed out.
+      FIRE_PRIVACY_TIMEOUT_MS: "30000"
       # product and menu formats (PLAN.md Phase 13).
       PRODUCT_EXTRACTION_SERVICE_URL: ${PRODUCT_EXTRACTION_SERVICE_URL:-}
       MENU_EXTRACTION_SERVICE_URL: ${MENU_EXTRACTION_SERVICE_URL:-}
@@ -152,6 +155,9 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
+    # tini as PID 1: Chromium helpers that outlive their parent are reaped
+    # instead of piling up as zombies until the pids limit (spawn EAGAIN).
+    init: true
     pids_limit: 512
     mem_limit: 3g
     volumes:

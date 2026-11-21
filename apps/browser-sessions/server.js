@@ -118,6 +118,9 @@ async function create(body, key) {
   proc.on("exit", () => {
     if (s.status === "running" || s.status === "starting") finish(s, "failed", "browser exited");
   });
+  // A failed start (EAGAIN at the process limit) must fail this session, not
+  // crash the service: an unhandled child "error" event exits Node.
+  proc.on("error", error => finish(s, "failed", `browser did not start: ${error.code ?? error.message}`));
   try {
     s.wsPath = await devtoolsPath(port);
   } catch (error) {
@@ -128,7 +131,20 @@ async function create(body, key) {
   return s;
 }
 
+// The agent-browser daemon a bash execute starts outlives the call; end it
+// with its session, or one stays behind per session.
+function stopAgentDaemon(s) {
+  const base = path.join("/tmp/ab", s.id.slice(0, 8));
+  try {
+    process.kill(Number(fs.readFileSync(`${base}.pid`, "utf8")), "SIGTERM");
+  } catch {} // ponytail: no daemon (node-only session) or already gone
+  for (const ext of [".pid", ".sock", ".config", ".stream", ".target", ".version"]) {
+    fs.rmSync(base + ext, { force: true });
+  }
+}
+
 function finish(s, status, error) {
+  stopAgentDaemon(s);
   s.status = status;
   s.endedAt = s.endedAt ?? now();
   if (error) s.error = error;
@@ -199,6 +215,11 @@ function execute(s, { code, language = "node", timeout = 30 }) {
     child.kill("SIGKILL");
   }, Math.min(Number(timeout) || 30, 300) * 1000);
   return new Promise(resolve => {
+    child.on("error", error => {
+      clearTimeout(timer);
+      resolve({ stdout: "", result: "", stderr: `could not start: ${error.code ?? error.message}`,
+        exit_code: 1, killed: false, truncated: false });
+    });
     child.on("close", status => {
       clearTimeout(timer);
       s.lastActivity = Date.now();
