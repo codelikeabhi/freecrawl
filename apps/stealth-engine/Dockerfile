@@ -25,6 +25,11 @@ COPY --from=service api.ts /app/playwright-service-ts/api.ts
 COPY --from=service helpers /app/playwright-service-ts/helpers
 
 USER node
-ENV STEALTH_HOST=0.0.0.0 STEALTH_PROFILE_DIR=/profiles
+# The start script's settings, without pnpm: at run time it would try to
+# reinstall as a user that cannot write node_modules.
+ENV STEALTH=true HOST=0.0.0.0 PORT=3003 MAX_CONCURRENT_PAGES=2 \
+  STEALTH_PROFILE_DIR=/profiles NODE_PATH=/app/stealth-engine/node_modules
 EXPOSE 3003
-CMD ["xvfb-run", "-a", "-s", "-screen 0 1920x1080x24", "pnpm", "start"]
+# Needs an init process as PID 1 (compose `init: true`): as PID 1, xvfb-run
+# never sees the display's ready signal and waits forever.
+CMD ["xvfb-run", "-a", "-s", "-screen 0 1920x1080x24", "node_modules/.bin/tsx", "../playwright-service-ts/api.ts"]

@@ -8,7 +8,8 @@ RUN apt-get update \
   && apt-get install -y --no-install-recommends libgl1 libglib2.0-0 \
   && rm -rf /var/lib/apt/lists/*
 
-ENV HOME=/opt/mineru MINERU_DEVICE_MODE=cpu PIP_NO_CACHE_DIR=1
+# YOLO_CONFIG_DIR: the layout model writes its settings file at import.
+ENV HOME=/opt/mineru MINERU_DEVICE_MODE=cpu PIP_NO_CACHE_DIR=1 YOLO_CONFIG_DIR=/tmp/yolo
 WORKDIR /app
 COPY requirements.txt .
 # CPU builds of torch: PyPI's Linux x86 wheel bundles gigabytes of CUDA.

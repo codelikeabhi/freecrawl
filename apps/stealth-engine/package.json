@@ -3,7 +3,7 @@
   "private": true,
   "description": "fork: apps/playwright-service-ts in stealth mode on the host (Patchright + installed Chrome). PLAN.md Phase 6.",
   "scripts": {
-    "start": "STEALTH=true HOST=${STEALTH_HOST:-127.0.0.1} PORT=${STEALTH_PORT:-3003} MAX_CONCURRENT_PAGES=${STEALTH_MAX_PAGES:-2} STEALTH_PROFILE_DIR=${STEALTH_PROFILE_DIR:-../../data/stealth-profiles} NODE_PATH=./node_modules tsx ../playwright-service-ts/api.ts"
+    "start": "STEALTH=true HOST=127.0.0.1 PORT=${STEALTH_PORT:-3003} MAX_CONCURRENT_PAGES=${STEALTH_MAX_PAGES:-2} STEALTH_PROFILE_DIR=${STEALTH_PROFILE_DIR:-../../data/stealth-profiles} NODE_PATH=./node_modules tsx ../playwright-service-ts/api.ts"
   },
   "engines": {
     "node": ">=22.13.0"

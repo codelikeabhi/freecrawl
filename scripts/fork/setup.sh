@@ -79,7 +79,8 @@ fi
 ((env_only)) && exit 0
 
 mkdir -p data/files
-docker compose up -d --build
+# --wait: until every container runs and the ones with a health check pass.
+docker compose up -d --build --wait --wait-timeout 900
 
 port=$(grep -E '^FORK_API_PORT=' .env | cut -d= -f2)
 echo "waiting for the API on 127.0.0.1:${port:-3002}"

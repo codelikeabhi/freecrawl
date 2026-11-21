@@ -254,6 +254,12 @@ services:
       - stealth-profiles:/profiles
     networks:
       - backend
+    # tini as PID 1: xvfb-run needs it, and it reaps Chrome's helpers.
+    init: true
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3003/health').then(r => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+      interval: 10s
+      start_period: 120s
     shm_size: 1g
     mem_limit: 3g
     restart: unless-stopped
@@ -262,6 +268,11 @@ services:
     build: apps/ocr-service
     networks:
       - backend
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:3020/health', timeout=5)"]
+      interval: 10s
+      timeout: 10s
+      start_period: 300s
     mem_limit: 6g
     restart: unless-stopped
   ollama:

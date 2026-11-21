@@ -74,7 +74,7 @@ jobs:
         if: failure()
         run: |
           docker compose ps -a
-          docker compose logs --tail 80
+          docker compose logs --tail 150
 
   windows-checkout:
     runs-on: windows-latest
@@ -87,6 +87,7 @@ jobs:
         shell: bash
         run: |
           files=$( { git ls-files '*.sh' '*Dockerfile' fork/env.example; git grep -lI '^#!/.*sh' -- apps scripts fork ':!apps/*-sdk/*'; } | sort -u)
-          bad=$(printf '%s\n' "$files" | xargs grep -l $'\r' || true)
+          # The working-tree column (w/) says what was actually checked out.
+          bad=$(printf '%s\n' "$files" | xargs git ls-files --eol -- | grep 'w/crlf' || true)
           echo "checked $(printf '%s\n' "$files" | wc -l) files"
           if [ -n "$bad" ]; then echo "CRLF in:"; echo "$bad"; exit 1; fi
