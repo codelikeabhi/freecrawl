@@ -67,6 +67,39 @@ describeIf(!!config.USE_GO_MARKDOWN_PARSER)("Fork: docs-style markdown", () => {
   });
 });
 
+// Upstream's post-processing (native/src/html.rs) counted every "[": one
+// unclosed bracket put a backslash at the end of every later line.
+describeIf(!!config.USE_GO_MARKDOWN_PARSER)("Fork: stray brackets", () => {
+  it(
+    "keeps line breaks plain after an unclosed bracket, and inside links escaped",
+    async () => {
+      const result = await parse(
+        {
+          options: { formats: ["markdown"] },
+          file: {
+            content: `<html><body><main><p>A range like <code>[4,9)</code> stops before 9.</p>
+<h3>Next</h3><p>More text.</p>
+<a href="https://x.test/card"><h4>Card title</h4><p>Card text</p></a>
+<p>Last.</p></main></body></html>`,
+            filename: "brackets.html",
+            contentType: "text/html",
+          },
+        },
+        identity,
+      );
+      const md = result.markdown ?? "";
+      expect(md).toContain("### Next\n\nMore text.");
+      expect(md).toMatch(/Last\.$/);
+      expect(
+        md.split("\n").filter(l => l.endsWith("\\")).length,
+      ).toBeGreaterThan(0);
+      const after = md.slice(md.indexOf("](https://x.test/card)"));
+      expect(after.split("\n").some(l => l.endsWith("\\"))).toBe(false);
+    },
+    scrapeTimeout,
+  );
+});
+
 describe("Fork: page warnings", () => {
   it(
     "warns when a page that succeeded is a 'not found' page",

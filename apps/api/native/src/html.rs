@@ -1012,28 +1012,42 @@ pub async fn extract_images(html: String, base_url: String) -> napi::Result<Vec<
 }
 
 /// The synchronous body of `post_process_markdown`.
+///
+/// fork: escapes newlines only inside the text of a real link or image,
+/// `[...](`. Upstream counted every `[`, so one unclosed bracket (inline code
+/// such as `[4,9)`, a citation, a typo) marked the rest of the page as link
+/// text and every later line ended in a backslash (Wikipedia's PostgreSQL
+/// article from its "Range types" paragraph on).
 pub fn post_process_markdown_text(markdown: &str) -> String {
-  let mut link_open_count = 0usize;
-  let mut out = String::with_capacity(markdown.len());
-
-  for ch in markdown.chars() {
-    match ch {
-      '[' => {
-        link_open_count += 1;
-      }
-      ']' => {
-        link_open_count = link_open_count.saturating_sub(1);
+  let chars: Vec<char> = markdown.chars().collect();
+  // +1 where a link's text opens, -1 where it closes; the running sum says
+  // whether a position is inside link text.
+  let mut depth_change = vec![0i32; chars.len() + 1];
+  let mut open: Vec<usize> = Vec::new();
+  for i in 0..chars.len() {
+    let escaped = i > 0 && chars[i - 1] == '\\';
+    match chars[i] {
+      '[' if !escaped => open.push(i),
+      ']' if !escaped => {
+        if let Some(start) = open.pop() {
+          if chars.get(i + 1) == Some(&'(') {
+            depth_change[start] += 1;
+            depth_change[i] -= 1;
+          }
+        }
       }
       _ => {}
     }
+  }
 
-    let inside_link_content = link_open_count > 0;
-    if inside_link_content && ch == '\n' {
+  let mut out = String::with_capacity(markdown.len());
+  let mut depth = 0i32;
+  for (i, &ch) in chars.iter().enumerate() {
+    depth += depth_change[i];
+    if depth > 0 && ch == '\n' {
       out.push('\\');
-      out.push('\n');
-    } else {
-      out.push(ch);
     }
+    out.push(ch);
   }
 
   remove_skip_to_content_links(&out)
