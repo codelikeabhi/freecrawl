@@ -28,11 +28,19 @@ const checks = {
   media: "http://media:8080/health",
   privacy: "http://privacy:8080/health",
   "fake-gcs": "http://fake-gcs:4443/storage/v1/b?project=local",
+  structured: "http://structured:8080/health",
+  agent: "http://agent:8080/health",
   playwright: "http://playwright-service:3000/health",
   "ocr (host)": "http://host.docker.internal:3020/health",
   "stealth (host)": "http://host.docker.internal:3003/health",
   "ollama (host)": "http://host.docker.internal:11434/api/tags",
 };
+// browser-sessions has no network; it answers on its Unix socket (404 = alive).
+const undici = require("undici");
+const viaSocket = new undici.Agent({ connect: { socketPath: "/sessions/hangar.sock" } });
+undici.fetch("http://browser-sessions/v1/browsers/health-check", { dispatcher: viaSocket, signal: AbortSignal.timeout(10000) })
+  .then(r => console.log(`${r.status === 404 ? "OK  " : "FAIL"}  service browser-sessions (socket)`))
+  .catch(e => console.log(`FAIL  service browser-sessions (socket)  ${e.cause?.code ?? e.message}`));
 Promise.all(Object.entries(checks).map(([name, url]) =>
   fetch(url, { signal: AbortSignal.timeout(10000) })
     .then(r => console.log(`${r.ok ? "OK  " : "FAIL"}  service ${name}${r.ok ? "" : "  HTTP " + r.status}`))
@@ -47,6 +55,12 @@ functions=$(docker compose exec -T nuq-postgres sh -c 'psql -tA -U "$POSTGRES_US
   <<<"select count(*) from pg_proc where proname in ('index_get_recent_5', 'monitoring_claim_due_monitors')")
 [[ $functions == 2 ]] && ok "local state tables and functions" ||
   bad "local state tables and functions" "run scripts/fork/state.sh init"
+
+# Postgres crash recoveries restart the API's workers (seen three times on
+# 2026-11-21, cause unknown); report them so a pattern shows.
+crashes=$(docker compose logs nuq-postgres --since 24h 2>/dev/null | grep -c "terminating any other active server processes")
+[[ $crashes == 0 ]] && ok "postgres: no crash recoveries in 24 h" ||
+  bad "postgres: $crashes crash recoveries in 24 h" "the API restarts with each; see docker compose logs nuq-postgres"
 
 # 4. Host agents are loaded (they start at login).
 for label in dev.freecrawl.stealth-engine dev.freecrawl.ocr-service; do
