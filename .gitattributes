@@ -1,2 +1,10 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# fork: these run inside Linux containers or under bash; a Windows checkout
+# with CRLF line endings would break them.
+*.sh text eol=lf
+Dockerfile text eol=lf
+apps/browser-sessions/agent-browser text eol=lf
+apps/redis/scripts/semver text eol=lf
+fork/env.example text eol=lf

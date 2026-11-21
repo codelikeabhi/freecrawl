@@ -1,0 +1,92 @@
+# fork: proves a fresh clone sets up and works on machines other than the
+# owner's Mac. Linux on x86 and on ARM (Windows runs the same Linux stack under
+# WSL 2), with every optional service as a container, and a Windows checkout
+# that keeps Unix line endings. GitHub's macOS runners have no Docker, so the
+# owner's Mac is the macOS check (scripts/fork/doctor.sh).
+name: fork-any-machine
+
+on:
+  push:
+    branches: [fork/main]
+    paths-ignore: ["**.md"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fork-any-machine-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Make room for the images
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL /usr/local/share/boost
+          df -h /
+
+      # A small model keeps CPU inference quick; the AI tests below only
+      # check that the formats work end to end, not answer quality.
+      - name: Set up from a fresh clone
+        run: scripts/fork/setup.sh --model qwen3:1.7b
+
+      - name: Fork tests (own containers and practice sites)
+        run: >
+          scripts/fork/snips.sh
+          src/__tests__/snips/v2/fork-fetch-first.test.ts
+          src/__tests__/snips/v2/fork-markdown.test.ts
+          src/__tests__/snips/v2/fork-politeness.test.ts
+          src/__tests__/snips/v2/fork-state.test.ts
+          src/__tests__/snips/v2/fork-monitor.test.ts
+          src/__tests__/snips/v2/fork-privacy.test.ts
+          src/__tests__/snips/v2/fork-browser.test.ts
+          src/__tests__/snips/v2/fork-sessions.test.ts
+          src/__tests__/snips/v2/fork-stealth.test.ts
+          src/__tests__/snips/v2/fork-ocr.test.ts
+
+      - name: AI formats on the local model
+        run: >
+          scripts/fork/snips.sh src/__tests__/snips/v2/fork-ai.test.ts
+          -t "extracts JSON with a schema|writes a summary|answers a question"
+
+      # Search engines, YouTube and GitHub's API often refuse datacenter IPs,
+      # and the agent needs a stronger model: reported, never blocking.
+      - name: Tests that need third-party services
+        continue-on-error: true
+        run: >
+          scripts/fork/snips.sh
+          src/__tests__/snips/v2/fork-search.test.ts
+          src/__tests__/snips/v2/fork-indexes.test.ts
+          src/__tests__/snips/v2/fork-media.test.ts
+          src/__tests__/snips/v2/fork-structured.test.ts
+          src/__tests__/snips/v2/fork-agent.test.ts
+
+      - name: Service logs
+        if: failure()
+        run: |
+          docker compose ps -a
+          docker compose logs --tail 80
+
+  windows-checkout:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      # Windows runners check out with core.autocrlf=true, as most Windows
+      # installs do.
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Scripts and Dockerfiles keep Unix line endings
+        shell: bash
+        run: |
+          files=$( { git ls-files '*.sh' '*Dockerfile' fork/env.example; git grep -lI '^#!/.*sh' -- apps scripts fork ':!apps/*-sdk/*'; } | sort -u)
+          bad=$(printf '%s\n' "$files" | xargs grep -l $'\r' || true)
+          echo "checked $(printf '%s\n' "$files" | wc -l) files"
+          if [ -n "$bad" ]; then echo "CRLF in:"; echo "$bad"; exit 1; fi

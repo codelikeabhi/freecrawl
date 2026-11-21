@@ -9,6 +9,9 @@ services:
     restart: unless-stopped  # owner: auto-start with Docker (2026-11-21)
     mem_limit: 6g
     memswap_limit: 6g
+    # The API has no auth: publish it on this machine only, whatever .env says.
+    ports: !override
+      - "127.0.0.1:${FORK_API_PORT:-3002}:${INTERNAL_PORT:-3002}"
     environment:
       # Not in the base x-common-env list, so .env alone would not reach the API.
       PARSE_UPLOAD_REF_SECRET: ${PARSE_UPLOAD_REF_SECRET:-}
@@ -215,21 +218,64 @@ services:
       AGENT_INTEROP_SECRET: ${AGENT_INTEROP_SECRET:-}
       SELF_HOSTED_WEBHOOK_HMAC_SECRET: ${SELF_HOSTED_WEBHOOK_HMAC_SECRET:-}
       FORK_WEBHOOK_LOCAL_HOSTS: host.docker.internal
+    # Docker Desktop resolves host.docker.internal itself; Linux needs this.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - backend
     mem_limit: 256m
     restart: unless-stopped
 
   # Product and menu extraction (PLAN.md Phase 13): JSON-LD first, then the
-  # host's Ollama model. Backend network only.
+  # local model. Backend network only.
   structured:
     build: apps/structured-service
     environment:
       OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-}
       MODEL_NAME: ${MODEL_NAME:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - backend
     mem_limit: 256m
+    restart: unless-stopped
+
+  # Optional services for machines without the macOS host agents. They run
+  # when COMPOSE_PROFILES in .env names them (scripts/fork/setup.sh sets it);
+  # the owner's Mac runs stealth and OCR on the host and Ollama as an app.
+  # Backend network only, nothing published.
+  stealth:
+    profiles: [stealth]
+    build:
+      context: apps/stealth-engine
+      additional_contexts:
+        service: apps/playwright-service-ts
+    volumes:
+      - stealth-profiles:/profiles
+    networks:
+      - backend
+    shm_size: 1g
+    mem_limit: 3g
+    restart: unless-stopped
+  ocr:
+    profiles: [ocr]
+    build: apps/ocr-service
+    networks:
+      - backend
+    mem_limit: 6g
+    restart: unless-stopped
+  ollama:
+    profiles: [ollama]
+    image: ollama/ollama:0.40.16
+    environment:
+      # Ollama's default context is 4k on small machines; the API budgets for this.
+      OLLAMA_CONTEXT_LENGTH: ${MODEL_CONTEXT_TOKENS:-32768}
+      OLLAMA_KEEP_ALIVE: 30m
+    volumes:
+      - ollama-models:/root/.ollama
+    networks:
+      - backend
+    # ponytail: no memory cap; the model needs what it needs (9B: about 9 GB).
     restart: unless-stopped
 
   # PII redaction (PLAN.md Phase 11): Presidio + spaCy, English. Backend only.
@@ -288,6 +334,8 @@ services:
     profiles: [fdb]
 
 volumes:
+  stealth-profiles:
+  ollama-models:
   browser-profiles:
   sessions-sock:
   gcs-data:

@@ -450,7 +450,12 @@ const stealthContext = (profile: string) => {
       const context = await chromium.launchPersistentContext(
         path.join(STEALTH_PROFILE_DIR, profile),
         {
-          channel: 'chrome',
+          // Google ships no Chrome for Linux on ARM; there Patchright's own
+          // Chromium stands in (the stealth container, apps/stealth-engine).
+          channel:
+            process.platform === 'linux' && process.arch === 'arm64'
+              ? 'chromium'
+              : 'chrome',
           headless: false,
           viewport: null,
           args: ['--window-position=-32000,-32000'],

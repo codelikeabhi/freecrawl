@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015  # ok/bad never fail, so A && ok || bad is safe
-# Health check for the whole local stack (PLAN.md Phase 16). Run after a
-# restart, after the Mac wakes, or when something looks off.
+# Health check for the whole local stack (PLAN.md Phase 16). Run after setup,
+# a restart, a sleep, or when something looks off. Linux, macOS, WSL 2.
 #
 #   scripts/fork/doctor.sh          containers, services, host agents, smoke test
 #   scripts/fork/doctor.sh --full   also the gap matrix (slow, uses the network)
@@ -31,10 +31,19 @@ const checks = {
   structured: "http://structured:8080/health",
   agent: "http://agent:8080/health",
   playwright: "http://playwright-service:3000/health",
-  "ocr (host)": "http://host.docker.internal:3020/health",
-  "stealth (host)": "http://host.docker.internal:3003/health",
-  "ollama (host)": "http://host.docker.internal:11434/api/tags",
 };
+// Optional services, checked wherever .env points them (a container, or the
+// host on the owner Mac); not configured means not checked.
+const base = name => (process.env[name] || "").replace(/\/+$/, "");
+const optional = {
+  stealth: base("FORK_STEALTH_URL").replace(/\/scrape$/, "") + "/health",
+  ocr: base("FIRE_PDF_BASE_URL") + "/health",
+  ollama: base("OLLAMA_BASE_URL") + "/tags",
+};
+for (const [name, url] of Object.entries(optional)) {
+  if (url.startsWith("http")) checks[name] = url;
+  else console.log(`SKIP  service ${name}  not configured in .env`);
+}
 // browser-sessions has no network; it answers on its Unix socket (404 = alive).
 const undici = require("undici");
 const viaSocket = new undici.Agent({ connect: { socketPath: "/sessions/hangar.sock" } });
@@ -62,10 +71,15 @@ crashes=$(docker compose logs nuq-postgres --since 24h 2>/dev/null | grep -c "te
 [[ $crashes == 0 ]] && ok "postgres: no crash recoveries in 24 h" ||
   bad "postgres: $crashes crash recoveries in 24 h" "the API restarts with each; see docker compose logs nuq-postgres"
 
-# 4. Host agents are loaded (they start at login).
-for label in dev.freecrawl.stealth-engine dev.freecrawl.ocr-service; do
-  launchctl print "gui/$(id -u)/$label" >/dev/null 2>&1 && ok "agent $label" || bad "agent $label" "not loaded"
-done
+# 4. On a Mac, the host agents that .env points at are loaded (they start at
+# login). Elsewhere these services run as containers, covered by step 1.
+if [[ $(uname -s) == Darwin ]]; then
+  for pair in FORK_STEALTH_URL:dev.freecrawl.stealth-engine FIRE_PDF_BASE_URL:dev.freecrawl.ocr-service; do
+    docker compose exec -T api printenv "${pair%%:*}" 2>/dev/null | grep -q host.docker.internal || continue
+    label=${pair#*:}
+    launchctl print "gui/$(id -u)/$label" >/dev/null 2>&1 && ok "agent $label" || bad "agent $label" "not loaded"
+  done
+fi
 
 # 5. Nothing but the API and the files server listens beyond the Docker network,
 # and only on 127.0.0.1.
