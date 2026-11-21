@@ -138,6 +138,36 @@ describeIf(HAS_AI && LOCAL_MODEL)("Fork: AI formats on the local model", () => {
     AI_TIMEOUT + 10000,
   );
 
+  // The fact is past the part of the page that fits the window: keeping only
+  // the start (upstream) loses it; ranking sections by the request keeps it.
+  it(
+    "finds a fact past the window on a long page",
+    async () => {
+      const raw = await scrapeRaw(
+        {
+          url: LONG_PAGE,
+          formats: [
+            {
+              type: "json",
+              prompt: "Since which year has Heroku supported PostgreSQL?",
+              schema: {
+                type: "object",
+                properties: { herokuSinceYear: { type: "number" } },
+                required: ["herokuSinceYear"],
+              },
+            },
+          ],
+          timeout: AI_TIMEOUT,
+        },
+        identity,
+      );
+      expect(raw.statusCode).toBe(200);
+      expect(raw.body.data.json?.herokuSinceYear).toBe(2007);
+      expect(raw.body.data.warning ?? "").toMatch(/sections that best match/);
+    },
+    AI_TIMEOUT + 10000,
+  );
+
   // Failure path: a page longer than the model's window must be trimmed with a
   // warning, not sent whole (Ollama would silently cut the prompt, instructions included).
   it(

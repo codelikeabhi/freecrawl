@@ -3,7 +3,12 @@ import type { GoogleLanguageModelOptions } from "@ai-sdk/google";
 import { encoding_for_model } from "@dqbd/tiktoken";
 import { Document, FormatObject } from "../../../controllers/v2/types";
 import { Meta } from "..";
-import { getModel } from "../../../lib/generic-ai";
+import { getModel, localContextTokens } from "../../../lib/generic-ai";
+import {
+  queryTerms,
+  relevanceWarning,
+  selectRelevant,
+} from "../../../lib/fork-relevant";
 import { config } from "../../../config";
 import { hasFormatOfType } from "../../../lib/format-utils";
 import { isUsOnly } from "../../../lib/us-only";
@@ -162,9 +167,13 @@ async function performDirectQuoteQuery(
 
   // Drop lines from the end until the rest fits the model's context window.
   // The lines that remain keep their indices and format.
+  // fork: the local model serves this call, so its window applies.
   const fitted = await fitToTokens(
     indexedLines,
-    DIRECT_QUOTE_MODEL.contextTokens - DIRECT_QUOTE_RESERVED_TOKENS,
+    localContextTokens
+      ? localContextTokens -
+          Math.min(DIRECT_QUOTE_RESERVED_TOKENS, localContextTokens / 4)
+      : DIRECT_QUOTE_MODEL.contextTokens - DIRECT_QUOTE_RESERVED_TOKENS,
     meta.logger,
   );
   if (fitted.trimmed) {
@@ -412,9 +421,9 @@ export async function performQuery(
     return document;
   }
 
-  const markdown = document.markdown!;
+  const fullMarkdown = document.markdown!;
 
-  if (!markdown || markdown.trim() === "") {
+  if (!fullMarkdown || fullMarkdown.trim() === "") {
     document.warning =
       "Query was skipped because the markdown content is empty." +
       (document.warning ? " " + document.warning : "");
@@ -423,11 +432,27 @@ export async function performQuery(
 
   const pageUrl = meta.url ?? document.metadata?.sourceURL ?? "";
 
+  // fork: a page over the local model's window keeps the sections that match
+  // the query rather than only its start (lib/fork-relevant.ts).
+  const fitFor = (query: string) => {
+    const picked = localContextTokens
+      ? selectRelevant(
+          fullMarkdown,
+          Math.floor(localContextTokens * 0.65),
+          queryTerms(query),
+        )
+      : undefined;
+    if (picked)
+      addWarning(document, relevanceWarning(picked.kept, picked.total));
+    return picked?.text ?? fullMarkdown;
+  };
+
   if (answerFormat) {
     const prompt =
       answerFormat.type === "question"
         ? answerFormat.question
         : answerFormat.prompt;
+    const markdown = fitFor(prompt);
     const answer =
       answerFormat.type === "query" && answerFormat.mode === "directQuote"
         ? await performDirectQuoteQuery(
@@ -453,7 +478,7 @@ export async function performQuery(
       meta,
       document,
       highlightsFormat.query,
-      markdown,
+      fitFor(highlightsFormat.query),
       "highlights",
     );
 

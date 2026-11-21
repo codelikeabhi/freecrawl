@@ -18,7 +18,12 @@ import {
   NoObjectGeneratedError,
   jsonSchema,
 } from "ai";
-import { getModel } from "../../../lib/generic-ai";
+import { getModel, localContextTokens } from "../../../lib/generic-ai";
+import {
+  queryTerms,
+  relevanceWarning,
+  selectRelevant,
+} from "../../../lib/fork-relevant";
 import { z } from "zod";
 import fs from "fs/promises";
 import Ajv from "ajv";
@@ -485,9 +490,31 @@ export async function generateCompletions({
   if (markdown && maxInputTokens) {
     const maxContentTokens = Math.floor(maxInputTokens * 0.8);
     if (Buffer.byteLength(markdown, "utf8") > maxContentTokens) {
-      const trimmed = trimToTokenLimit(markdown, maxContentTokens, modelId);
+      // fork: on the local model's small window, keep the sections that match
+      // the prompt and schema rather than only the start (lib/fork-relevant.ts).
+      const picked = localContextTokens
+        ? selectRelevant(
+            markdown,
+            maxContentTokens,
+            queryTerms(
+              options.prompt,
+              options.schema ? JSON.stringify(options.schema) : undefined,
+            ),
+          )
+        : undefined;
+      if (picked) markdown = picked.text;
+      // fork: tiktoken has no encoding for a local model's name, and its
+      // fallback cuts at 2.8 characters a token with a "failed" warning; count
+      // with gpt-4o's encoding instead, as query.ts does.
+      const trimmed = trimToTokenLimit(
+        markdown,
+        maxContentTokens,
+        localContextTokens ? "gpt-4o" : modelId,
+      );
       markdown = trimmed.text;
-      warning = trimmed.warning;
+      warning =
+        trimmed.warning ??
+        (picked ? relevanceWarning(picked.kept, picked.total) : undefined);
     }
   }
 

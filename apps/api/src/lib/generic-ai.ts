@@ -36,13 +36,17 @@ const defaultProvider: Provider = config.OLLAMA_BASE_URL ? "ollama" : "openai";
 // "anthropic" in places, and without their keys those calls fail.
 const localModel =
   config.OLLAMA_BASE_URL && config.MODEL_NAME ? config.MODEL_NAME : undefined;
+/** The local model's window (MODEL_CONTEXT_TOKENS), when one serves every call. */
+export const localContextTokens = localModel
+  ? Number(process.env.MODEL_CONTEXT_TOKENS) || 32768
+  : undefined;
 if (localModel) {
   // Callers size prompts from this table by the model they name (llmExtract,
   // query trims to 80% of e.g. gemini's 1M window). Every call is served by the
   // local model here, so every entry gets its window; otherwise long pages go
   // out untrimmed and Ollama silently cuts the prompt.
   // MODEL_CONTEXT_TOKENS must match the model's num_ctx.
-  const contextTokens = Number(process.env.MODEL_CONTEXT_TOKENS) || 32768;
+  const contextTokens = localContextTokens!;
   const limits = {
     max_tokens: contextTokens,
     max_input_tokens: contextTokens - 4096,
