@@ -26,6 +26,7 @@ This checkout is a private self-hosted fork. Plan and notes: `PLAN.md`, `docs/fo
 
 - For web scraping, use the `firecrawl-local` MCP server (our API at http://localhost:3002). If a cloud Firecrawl connector from claude.ai is also loaded (tools like `mcp__claude_ai_Firecrawl__*`), do not use it unless the owner asks, because it spends paid credits.
 - `firecrawl-local` also lists Cloud-only tools (agent, interact, monitor, research papers). They fail against the local API; do not use them.
+- With `firecrawl-local`, `pdfOptions.maxPages` only applies when `parsers: ["pdf"]` is passed too; otherwise the whole PDF is parsed.
 - Screenshots and action PDFs come back as `http://localhost:3010/...` URLs, which WebFetch cannot open. Read the matching path in `metadata.localFiles` with the Read tool instead (files are deleted after 24 h).
 - The stealth engine runs on the host, not in Docker, started at login by a LaunchAgent (`scripts/fork/stealth.sh status|logs`). Without it, `proxy: "stealth"`, `profile` and blocked-page escalation fail. After editing `apps/playwright-service-ts/api.ts`, run `scripts/fork/stealth.sh install-agent` (the agent runs a copy) and rebuild the `playwright-service` image. A response with `metadata.blocked: true` is a bot wall, not content.
 - When a page is blocked, follow the `web-fetch-ladder` skill (`.claude/skills/web-fetch-ladder/`, added in Phase 7 of `PLAN.md`).
