@@ -1,5 +1,6 @@
 // fork: blocked-page classifier (PLAN.md Phase 6). Upstream only escalates to
 // stealth on 401/403/429; bot walls often answer 200 with a challenge page.
+import { pacingOn } from "./fork-host-pace";
 
 const BLOCK_STATUSES = new Set([401, 403, 429, 503]);
 
@@ -62,6 +63,11 @@ export function pageWarning(
   statusCode: number,
   html: string | undefined,
 ): string | undefined {
+  if (statusCode === 429) {
+    return pacingOn()
+      ? "The site answered 429 Too Many Requests. Later requests to this host wait before they start (Retry-After, or a backoff of up to 60 s)."
+      : "The site answered 429 Too Many Requests; wait before sending it more requests.";
+  }
   if (!html || statusCode < 200 || statusCode >= 300) return undefined;
   if (NOT_FOUND_TITLE.test(html)) {
     return `This page looks like a "not found" page, although the server answered ${statusCode}.`;

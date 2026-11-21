@@ -17,6 +17,10 @@ services:
       # but off by default; without it Turndown drops code fences and escapes
       # code. Cloud converts with the same library.
       USE_GO_MARKDOWN_PARSER: "true"
+      # fork: plain fetch first, browser only for JS shells and blocks (per host)
+      FORK_FETCH_FIRST: "true"
+      # fork: per-host pacing; 429/503 push the next request back (lib/fork-host-pace.ts)
+      FORK_HOST_GAP_MS: "500"
       # Screenshots and PDFs as files (lib/fork-files.ts), served by `files`.
       FORK_FILES_DIR: /data/files
       FORK_FILES_URL: http://localhost:3010

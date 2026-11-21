@@ -12,6 +12,9 @@ describe("Stealth proxy routing without fire-engine (buildFallbackList)", () => 
     FIRE_ENGINE_BETA_URL: undefined,
     FIRE_EXCHANGE_URL: undefined,
     INDEX_DATABASE_URL: undefined,
+    // fork: our stealth engine and fetch-first reorder the list when set
+    FORK_STEALTH_URL: undefined,
+    FORK_FETCH_FIRST: undefined,
     PLAYWRIGHT_MICROSERVICE_URL: "http://test-playwright",
   };
   const original: Record<string, string | undefined> = {};

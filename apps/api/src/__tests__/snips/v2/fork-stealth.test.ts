@@ -2,6 +2,7 @@
 // host, reached through FORK_STEALTH_URL. Start it with scripts/fork/stealth.sh.
 import { describeIf, scrapeTimeout } from "../lib";
 import { idmux, Identity, scrape, scrapeRaw } from "./lib";
+import { getRedisConnection } from "../../../services/queue-service";
 
 const FORK_STEALTH = !!process.env.FORK_STEALTH_URL;
 
@@ -82,6 +83,11 @@ describeIf(FORK_STEALTH)("Fork: stealth engine", () => {
       expect(String(second.actions!.javascriptReturns![0].value)).toContain(
         `fork_test=${value}`,
       );
+      // A profile runs on stealth by itself: the host must not be remembered
+      // as needing stealth (lib/fork-fetch-first.ts).
+      expect(
+        await getRedisConnection().get("fork-engine:example.com"),
+      ).not.toBe("stealth");
     },
     scrapeTimeout * 2,
   );

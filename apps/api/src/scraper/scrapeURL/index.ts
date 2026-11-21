@@ -28,6 +28,15 @@ import {
 } from "./engines";
 import { applyHandoffFeatureFlags } from "./lib/handoffFeatureFlags";
 import { blockedReason, pageWarning } from "./lib/fork-blocked";
+import {
+  fetchGoesFirst,
+  needsBrowser,
+  noteStealthResult,
+  rememberHost,
+  visibleText,
+  withRememberedStealth,
+} from "./lib/fork-fetch-first";
+import { backOffHost, waitForHost } from "./lib/fork-host-pace";
 import { browserLocale } from "./engines/playwright";
 import { parseMarkdown } from "../../lib/html-to-markdown";
 import { hasFormatOfType } from "../../lib/format-utils";
@@ -592,11 +601,11 @@ async function buildMetaObject(
           }
         : undefined,
     ),
-    featureFlags: buildFeatureFlags(
+    featureFlags: await withRememberedStealth(
+      buildFeatureFlags(url, effectiveOptions, internalOptions, imageOcrForUrl),
       url,
       effectiveOptions,
-      internalOptions,
-      imageOcrForUrl,
+      internalOptions.forceEngine !== undefined,
     ),
     mock:
       options.useMock !== undefined
@@ -697,6 +706,27 @@ async function scrapeURLLoopIter(
 ): Promise<EngineScrapeResult> {
   const abort = meta.abort.child(snipeAbort);
   try {
+    // fork: wait for this host's slot before an engine that reaches the site
+    // (lib/fork-host-pace.ts); cache lookups and prefetched files do not.
+    const reachesSite =
+      !engine.startsWith("index") &&
+      engine !== "wikipedia" &&
+      !meta.internalOptions.isParse &&
+      !meta.fetchPrefetch &&
+      !(engine === "pdf" && meta.pdfPrefetch) &&
+      !(engine === "document" && meta.documentPrefetch) &&
+      !(engine === "image" && meta.imagePrefetch);
+    if (reachesSite) {
+      try {
+        const waited = await waitForHost(meta.url, abort.asSignal());
+        if (waited > 1000)
+          meta.logger.info("fork: waited for host slot", { waited });
+      } catch (error) {
+        abort.throwIfAborted();
+        throw error;
+      }
+    }
+
     const engineResult = await scrapeURLWithEngine(
       {
         ...meta,
@@ -726,6 +756,7 @@ async function scrapeURLLoopIter(
       hasQuery;
 
     let checkMarkdown: string;
+    let checkIsMarkdown = false; // fork: for the fetch-first shell test
     const htmlSize = engineResult.html?.length ?? 0;
     const shouldSkipMarkdownCheck = htmlSize > MAX_HTML_SIZE_FOR_MARKDOWN_CHECK;
 
@@ -750,7 +781,9 @@ async function scrapeURLLoopIter(
       checkMarkdown = engineResult.html?.trim() ?? "";
     } else if (engineResult.markdown?.trim()) {
       checkMarkdown = engineResult.markdown.trim();
+      checkIsMarkdown = true;
     } else {
+      checkIsMarkdown = true;
       const requestId = meta.id || meta.internalOptions.crawlId;
       const zeroDataRetention = meta.internalOptions.zeroDataRetention;
       checkMarkdown = await parseMarkdown(
@@ -805,8 +838,53 @@ async function scrapeURLLoopIter(
             checkMarkdown,
           );
     if (blocked) engineResult.blockedReason = blocked;
+    if (reachesSite) {
+      const delay = await backOffHost(
+        meta.url,
+        engineResult.statusCode,
+        engineResult.retryAfter,
+      );
+      if (delay > 0)
+        meta.logger.warn("fork: host asked to slow down", { delay });
+    }
     const stealthAvailable =
       !!process.env.FORK_STEALTH_URL || !!config.FIRE_ENGINE_BETA_URL;
+
+    // fork: a fetch that went first is kept only when it is the real page.
+    // A shell or a block (bare HTTP is refused more often than a browser)
+    // hands over to the browser, and the host goes straight there next time.
+    // Sitemaps and robots.txt are XML or text: only a block counts there.
+    if (engine === "fetch" && !hasRawBase64 && (await fetchGoesFirst(meta))) {
+      const html = engineResult.html ?? "";
+      const isFile =
+        meta.internalOptions.teamId === "sitemap" ||
+        meta.internalOptions.teamId === "robots-txt";
+      const reason =
+        blocked ??
+        (isFile
+          ? undefined
+          : needsBrowser(
+              html,
+              checkIsMarkdown ? checkMarkdown : visibleText(html),
+            ));
+      if (reason) {
+        meta.logger.info("fork: fetch result needs a browser", { reason });
+        await rememberHost(meta.url, "browser");
+        throw new EngineUnsuccessfulError(engine);
+      }
+    }
+    // (a profile runs on stealth by itself, so it says nothing about the host)
+    if (
+      engine === "stealth" &&
+      meta.options.proxy === "auto" &&
+      !meta.options.profile
+    ) {
+      await noteStealthResult(
+        meta.url,
+        blocked !== undefined,
+        isGoodStatusCode,
+      );
+    }
 
     if (
       (isLikelyProxyError || (blocked !== undefined && stealthAvailable)) &&

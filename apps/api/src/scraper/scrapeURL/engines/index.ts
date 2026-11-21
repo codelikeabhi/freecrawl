@@ -11,6 +11,7 @@ import { exchangeMaxReasonableTime, scrapeURLWithExchange } from "./exchange";
 import { pdfMaxReasonableTime, scrapePDF } from "./pdf";
 import { imageMaxReasonableTime, scrapeImage } from "./image";
 import { fetchMaxReasonableTime, scrapeURLWithFetch } from "./fetch";
+import { fetchGoesFirst } from "../lib/fork-fetch-first";
 import {
   playwrightMaxReasonableTime,
   scrapeURLWithPlaywright,
@@ -166,6 +167,8 @@ export type EngineScrapeResult = {
   localFiles?: string[];
   // fork: why the page looks blocked (lib/fork-blocked.ts), if it does.
   blockedReason?: string;
+  // fork: the response's Retry-After header, where the engine sees headers.
+  retryAfter?: string;
   actions?: {
     screenshots: string[];
     scrapes: ScrapeActionContent[];
@@ -1086,10 +1089,14 @@ export async function buildFallbackList(meta: Meta): Promise<
   }
 
   if (meta.internalOptions.forceEngine === undefined) {
+    // fork: plain fetch ahead of the browser for hosts not known to need one
+    // (lib/fork-fetch-first.ts); the loop rejects JS shells and blocks.
+    const fetchFirst = await fetchGoesFirst(meta);
     // retain force engine order
     // THIS SUCKS BUT IT WORKS
     const getEffectiveQuality = (engine: Engine) => {
       let quality = engineOptions[engine].quality;
+      if (fetchFirst && engine === "fetch") quality = 25; // above playwright (20)
       // When engpicker says TlsClientOk, prioritize tlsclient over CDP/CDPRetry
       if (shouldPrioritizeTlsClient) {
         if (engine === "fire-engine;tlsclient") {

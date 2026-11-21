@@ -11,6 +11,19 @@ import {
 import { MockState, saveMock } from "../../lib/mock";
 import { hasFormatOfType } from "../../../../lib/format-utils";
 import { TextDecoder } from "util";
+import { FETCH_HEADERS, fetchFirst } from "../../lib/fork-fetch-first";
+
+// fork: default headers under fetch-first; the request's own win.
+function withDefaultHeaders(headers?: Record<string, string>) {
+  if (!fetchFirst()) return headers;
+  const own = new Set(Object.keys(headers ?? {}).map(k => k.toLowerCase()));
+  return {
+    ...Object.fromEntries(
+      Object.entries(FETCH_HEADERS).filter(([k]) => !own.has(k.toLowerCase())),
+    ),
+    ...headers,
+  };
+}
 
 function decodeHtmlBuffer(
   buf: Buffer,
@@ -161,7 +174,7 @@ export async function scrapeURLWithFetch(
       const x = await undici.fetch(meta.rewrittenUrl ?? meta.url, {
         dispatcher: getSecureDispatcher(meta.options.skipTlsVerification),
         redirect: "follow",
-        headers: meta.options.headers,
+        headers: withDefaultHeaders(meta.options.headers),
         signal: meta.abort.asSignal(),
       });
 
@@ -231,6 +244,9 @@ export async function scrapeURLWithFetch(
     html: response.body,
     rawBase64,
     statusCode: response.status,
+    retryAfter: response.headers.find(
+      x => x[0].toLowerCase() === "retry-after",
+    )?.[1],
     contentType:
       (response.headers.find(x => x[0].toLowerCase() === "content-type") ??
         [])[1] ?? undefined,
