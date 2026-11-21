@@ -90,7 +90,10 @@ export async function sendDocumentToIndex(meta: Meta, document: Document) {
     (meta.internalOptions.teamId === "sitemap" ||
       (meta.winnerEngine !== "fire-engine;tlsclient" &&
         meta.winnerEngine !== "fire-engine;tlsclient;stealth" &&
-        meta.winnerEngine !== "fetch")) &&
+        // fork: with fetch first, most pages come from fetch; one that
+        // passed the shell check is cached like a browser result, or maxAge
+        // and lockdown would stop working for them.
+        (meta.winnerEngine !== "fetch" || meta.fetchFirstAccepted === true))) &&
     !meta.featureFlags.has("actions") &&
     !hasCustomScreenshotSettings &&
     !hasCustomRequestContext(meta.options);

@@ -12,5 +12,9 @@ COPY server.js runner.js ./
 COPY agent-browser /opt/fork/bin/agent-browser
 RUN mkdir -p /sessions /profiles && chown node:node /sessions /profiles \
     && chmod -R a+rX /ms-playwright
+# The root file system is read-only. Without a writable config dir Chromium's
+# crash handler has no database, and on native Linux the browser then dies at
+# start ("chrome_crashpad_handler: --database is required").
+ENV XDG_CONFIG_HOME=/tmp/.config XDG_CACHE_HOME=/tmp/.cache
 USER node
 CMD ["node", "server.js"]

@@ -298,6 +298,9 @@ export type Meta = {
     | undefined; // undefined: no prefetch yet, null: prefetch came back empty
   costTracking: CostTracking;
   winnerEngine?: Engine;
+  /** fork: fetch went first and the page passed the shell check, so its
+   * result is as good as a browser's and may be cached (engines/index). */
+  fetchFirstAccepted?: boolean;
   /** The `raw-` content-cache key of the PDF this scrape looked up through
    * the fire-pdf cache service, stored with the URL index entry so a later
    * index hit can ask whether fire-pdf holds a newer parse. A holder shared
@@ -872,6 +875,7 @@ async function scrapeURLLoopIter(
         await rememberHost(meta.url, "browser");
         throw new EngineUnsuccessfulError(engine);
       }
+      meta.fetchFirstAccepted = true;
     }
     // (a profile runs on stealth by itself, so it says nothing about the host)
     if (

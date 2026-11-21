@@ -40,6 +40,26 @@ describeIf(FETCH_FIRST)("Fork: fetch first", () => {
   );
 
   it(
+    "caches a page that plain fetch served, for maxAge and lockdown",
+    async () => {
+      // A new query string: a page the cache has not seen, on a fetch host.
+      const url = `https://books.toscrape.com/?t=${crypto.randomUUID()}`;
+      const first = await scrape({ url }, identity);
+      expect(await verdict("books.toscrape.com")).toBeNull();
+      let cached;
+      for (let i = 0; i < 10; i++) {
+        await new Promise(r => setTimeout(r, 2000));
+        cached = await scrape({ url, maxAge: 3600000 }, identity);
+        if (cached.metadata.cacheState === "hit") break;
+      }
+      expect(cached!.metadata.cacheState).toBe("hit");
+      const locked = await scrape({ url, lockdown: true }, identity);
+      expect(locked.markdown).toBe(first.markdown);
+    },
+    scrapeTimeout * 3,
+  );
+
+  it(
     "renders a JavaScript-only page in the browser and remembers the host",
     async () => {
       // The quotes on /js/ exist only after its script runs.
