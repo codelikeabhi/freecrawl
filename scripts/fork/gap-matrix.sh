@@ -136,6 +136,18 @@ done <<<"$CASES"
 mid=$(jq -r '.data.id // empty' "$OUT/monitor.create.json" 2>/dev/null)
 [[ -n $mid ]] && curl -s -o /dev/null -X DELETE "$API/v2/monitor/$mid"
 
+# Browser session (Phase 14): create, run code, stop.
+if [[ browser.session =~ $FILTER ]]; then
+  sid=$(curl -sS --max-time 120 -X POST "$API/v2/browser" -H 'Content-Type: application/json' \
+    -d '{"ttl":120,"activityTtl":60}' | jq -r '.id // empty')
+  resp=$(curl -sS --max-time 120 -X POST "$API/v2/browser/${sid:-none}/execute" -H 'Content-Type: application/json' \
+    -d '{"code":"await page.goto(\"https://example.com\"); return await page.title()"}')
+  [[ -n $sid ]] && curl -s -o /dev/null -X DELETE "$API/v2/browser/$sid"
+  printf '%s\n' "$resp" >"$OUT/browser.session.json"
+  [[ $(jq -r '.result' <<<"$resp" 2>/dev/null) == "Example Domain" ]] && res=OK || res=FAIL
+  printf '%-30s %-4s %-4s %s\n' browser.session "${sid:+200}" "$res" "$(note "$resp")"
+fi
+
 # /v2/parse takes a multipart upload, so uploads get their own calls.
 #   upload <name> <file> <content-type> <jq evidence> [options JSON]
 upload() {

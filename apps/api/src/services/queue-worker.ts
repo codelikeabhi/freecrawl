@@ -35,6 +35,7 @@ import { shutdownPubSubLogging } from "./logging/log_job";
 import { startRole } from "../main";
 import { processIndexInsertJobs } from "./index";
 import { processWebhookInsertJobs } from "./webhook";
+import { reconcileBrowserSessions } from "../lib/browser-lifecycle";
 
 configDotenv();
 
@@ -453,6 +454,19 @@ export async function start() {
         _logger.error("Failed to drain the index insert queue", { error });
       });
     }, 3000);
+  }
+  // fork: close browser sessions our session service has expired (the
+  // index-worker does this with DB auth on; Phase 14).
+  if (
+    process.env.FORK_LOCAL_STATE === "true" &&
+    !config.USE_DB_AUTHENTICATION &&
+    config.HANGAR_URL
+  ) {
+    setInterval(() => {
+      reconcileBrowserSessions().catch(error => {
+        _logger.error("Failed to reconcile browser sessions", { error });
+      });
+    }, 15000);
   }
   // fork: same for webhook delivery logs, which would pile up in Redis.
   if (

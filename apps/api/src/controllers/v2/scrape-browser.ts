@@ -58,6 +58,7 @@ import {
   type BrowserOptions,
   browserOptionsFromScrape,
 } from "../../lib/browser-options";
+import { forkLocalState } from "../../lib/fork-state";
 import { scrapeQueue } from "../../services/worker/nuq-router";
 
 const browserExecuteRequestSchema = z
@@ -173,7 +174,8 @@ async function scrapeInteractInternal(
 
   // --- Validate scrape ownership ---
 
-  if (config.USE_DB_AUTHENTICATION !== true) {
+  // fork: with local state the scrape context lives in Redis (lib/fork-state.ts)
+  if (config.USE_DB_AUTHENTICATION !== true && !forkLocalState()) {
     return res.status(501).json({
       success: false,
       error:

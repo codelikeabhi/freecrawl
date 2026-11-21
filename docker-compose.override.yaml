@@ -58,12 +58,17 @@ services:
       # the API reaches it over a Unix socket; codegen uses the local model.
       CODE_SANDBOX_URL: ws+unix:/sandbox/run.sock
       EXTRACT_CODEGEN_MODEL: ${MODEL_NAME:-}
+      # Browser sessions and interact (PLAN.md Phase 14): our session service
+      # speaks Hangar's contract over a Unix socket (no network path to us).
+      HANGAR_URL: http://browser-sessions
+      FORK_HANGAR_SOCKET: /sessions/hangar.sock
       SELF_HOSTED_WEBHOOK_HMAC_SECRET: ${SELF_HOSTED_WEBHOOK_HMAC_SECRET:-}
       # Receivers on the Mac only; scrapes keep the private-address guard.
       FORK_WEBHOOK_LOCAL_HOSTS: host.docker.internal
     volumes:
       - ./data/files:/data/files
       - sandbox-sock:/sandbox
+      - sessions-sock:/sessions
     depends_on:
       searxng:
         condition: service_started
@@ -119,6 +124,51 @@ services:
     networks:
       - backend
     mem_limit: 256m
+    restart: unless-stopped
+
+  # Browser sessions (PLAN.md Phase 14): runs user and model-driven node/bash
+  # code next to a live Chromium, so it is fenced in: an internal network whose
+  # only way out is egress-proxy (public addresses only), read-only, non-root,
+  # no capabilities. The API reaches it over a Unix socket.
+  browser-sessions:
+    build: apps/browser-sessions
+    environment:
+      EGRESS_PROXY: http://egress-proxy:3128
+      PUBLIC_CDP_BASE: ws://127.0.0.1:9333
+      MAX_SESSIONS: "3"
+    networks:
+      - sessions
+    read_only: true
+    tmpfs:
+      - /tmp:size=2g
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 512
+    mem_limit: 3g
+    volumes:
+      - sessions-sock:/sessions
+      - browser-profiles:/profiles
+    restart: unless-stopped
+
+  # The sessions' only exit: HTTP/HTTPS to public addresses, plus the CDP
+  # relay published on 127.0.0.1:9333 only.
+  egress-proxy:
+    build: apps/egress-proxy
+    environment:
+      SESSIONS_HOST: browser-sessions
+    networks:
+      - sessions
+      - egress
+    ports:
+      - "127.0.0.1:9333:9333"
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 128m
     restart: unless-stopped
 
   # Runs deterministicJson extractors (PLAN.md Phase 13): LLM-written code
@@ -208,8 +258,16 @@ services:
     profiles: [fdb]
 
 volumes:
+  browser-profiles:
+  sessions-sock:
   gcs-data:
   sandbox-sock:
   nuq-postgres-data:
   redis-data:
   rabbitmq-data:
+
+networks:
+  # Browser sessions: no route out except egress-proxy.
+  sessions:
+    internal: true
+  egress:

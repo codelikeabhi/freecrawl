@@ -1,5 +1,22 @@
 import { config } from "../config";
 import { type BrowserOptions, hangarBrowserOptions } from "./browser-options";
+import * as undici from "undici";
+
+// fork: our session service has no network path to the API; the API reaches
+// it over a Unix socket instead (FORK_HANGAR_SOCKET, PLAN.md Phase 14).
+// HANGAR_URL still names the paths; its host is not used then.
+const forkHangarDispatcher = process.env.FORK_HANGAR_SOCKET
+  ? new undici.Agent({
+      connect: { socketPath: process.env.FORK_HANGAR_SOCKET },
+    })
+  : undefined;
+const hangarFetch = (url: string, init: RequestInit): Promise<Response> =>
+  forkHangarDispatcher
+    ? (undici.fetch(url, {
+        ...(init as undici.RequestInit),
+        dispatcher: forkHangarDispatcher,
+      }) as unknown as Promise<Response>)
+    : fetch(url, init);
 
 export interface HangarBrowser {
   id: string;
@@ -62,7 +79,7 @@ async function request<T>(
     );
   let response: globalThis.Response;
   try {
-    response = await fetch(
+    response = await hangarFetch(
       `${config.HANGAR_URL.replace(/\/$/, "")}/v1/${options?.resource ?? "browsers"}${path}`,
       {
         method,

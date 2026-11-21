@@ -1,0 +1,9 @@
+{
+  "name": "freecrawl-browser-sessions",
+  "private": true,
+  "description": "fork: browser sessions speaking Hangar's contract (PLAN.md Phase 14). See server.js.",
+  "dependencies": {
+    "agent-browser": "0.41.0",
+    "playwright": "1.65.0"
+  }
+}

@@ -1,0 +1,12 @@
+#!/bin/sh
+# fork: points agent-browser at this session's Chromium (the API's browser
+# agent runs it from bash). AGENT_BROWSER_CDP and AGENT_BROWSER_SESSION come
+# from server.js for each execute call.
+real=/app/node_modules/.bin/agent-browser
+if [ "$1" = "tab" ] && echo "${2:-}" | grep -qE '^[0-9a-fA-F]{32}$'; then
+  # Upstream selects the replay tab by CDP target id; every session here has
+  # exactly one tab, so a failed lookup is not an error.
+  "$real" --cdp "$AGENT_BROWSER_CDP" --session "$AGENT_BROWSER_SESSION" "$@" 2>/dev/null || true
+  exit 0
+fi
+exec "$real" --cdp "$AGENT_BROWSER_CDP" --session "$AGENT_BROWSER_SESSION" "$@"
