@@ -7,6 +7,7 @@ import { getModel, localContextTokens } from "../../../lib/generic-ai";
 import {
   queryTerms,
   relevanceWarning,
+  relevantBudget,
   selectRelevant,
 } from "../../../lib/fork-relevant";
 import { config } from "../../../config";
@@ -438,7 +439,7 @@ export async function performQuery(
     const picked = localContextTokens
       ? selectRelevant(
           fullMarkdown,
-          Math.floor(localContextTokens * 0.65),
+          relevantBudget(Math.floor(localContextTokens * 0.65)),
           queryTerms(query),
         )
       : undefined;

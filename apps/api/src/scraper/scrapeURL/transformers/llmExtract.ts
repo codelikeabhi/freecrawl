@@ -22,6 +22,7 @@ import { getModel, localContextTokens } from "../../../lib/generic-ai";
 import {
   queryTerms,
   relevanceWarning,
+  relevantBudget,
   selectRelevant,
 } from "../../../lib/fork-relevant";
 import { z } from "zod";
@@ -495,7 +496,7 @@ export async function generateCompletions({
       const picked = localContextTokens
         ? selectRelevant(
             markdown,
-            maxContentTokens,
+            relevantBudget(maxContentTokens),
             queryTerms(
               options.prompt,
               options.schema ? JSON.stringify(options.schema) : undefined,

@@ -128,5 +128,11 @@ export function selectRelevant(
   return { text: parts.join("\n\n"), kept: keep.size, total: sections.length };
 }
 
+// ponytail: once sections are ranked the best ones fit well under the window,
+// and the 9B model reads 12k tokens in about half the time of 23k. Raise it
+// with a faster or larger model.
+export const relevantBudget = (windowBudget: number) =>
+  Math.min(windowBudget, 12_000);
+
 export const relevanceWarning = (kept: number, total: number) =>
   `The page was too long for the model and was trimmed to the ${kept} of its ${total} sections that best match the request ("[...]" marks the rest).`;
