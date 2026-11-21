@@ -5,6 +5,7 @@ import { agent_session_settings } from "../../db/schema";
 import { clickhouseClient } from "../../lib/clickhouse-client";
 import { AgentListResponse, ErrorResponse, RequestWithAuth } from "./types";
 import { Response } from "express";
+import { forkLocalState } from "../../lib/fork-state";
 
 type RecentAgent = {
   id: string;
@@ -130,7 +131,11 @@ export async function agentListController(
     });
   }
 
-  if (!config.USE_DB_AUTHENTICATION) {
+  // fork: with local state and auth off there is no ClickHouse or settings
+  // table; list the agent service's own runs (PLAN.md Phase 15).
+  const forkOnlyRecent = !config.USE_DB_AUTHENTICATION && forkLocalState();
+
+  if (!config.USE_DB_AUTHENTICATION && !forkOnlyRecent) {
     return res.status(501).json({
       success: false,
       error:
@@ -142,7 +147,7 @@ export async function agentListController(
     throw new Error("Agent beta is not enabled.");
   }
 
-  if (clickhouseClient === null) {
+  if (clickhouseClient === null && !forkOnlyRecent) {
     return res.status(501).json({
       success: false,
       error: "This endpoint is only available if ClickHouse is configured.",
@@ -177,6 +182,9 @@ export async function agentListController(
       );
     })(),
     (async () => {
+      if (forkOnlyRecent || clickhouseClient === null) {
+        return new Map<string, any>();
+      }
       // Keyset pagination on (created_at, id), the same order the rows are
       // returned in, so agents created in the same millisecond as the last
       // one on a page are not skipped. Millisecond precision matches the
@@ -285,15 +293,17 @@ export async function agentListController(
 
   const allIds = [...new Set([...recentAgents.keys(), ...dbAgents.keys()])];
 
-  const sessionSettings = await db
-    .select()
-    .from(agent_session_settings)
-    .where(
-      and(
-        inArray(agent_session_settings.session_id, allIds),
-        eq(agent_session_settings.team_id, req.auth.team_id),
-      ),
-    );
+  const sessionSettings = forkOnlyRecent
+    ? []
+    : await db
+        .select()
+        .from(agent_session_settings)
+        .where(
+          and(
+            inArray(agent_session_settings.session_id, allIds),
+            eq(agent_session_settings.team_id, req.auth.team_id),
+          ),
+        );
 
   const sessionSettingsMap = new Map(
     sessionSettings.map(x => [x.session_id, x]),

@@ -61,6 +61,9 @@ services:
       # Browser sessions and interact (PLAN.md Phase 14): our session service
       # speaks Hangar's contract over a Unix socket (no network path to us).
       HANGAR_URL: http://browser-sessions
+      # /v2/agent (PLAN.md Phase 15): our agent service.
+      EXTRACT_V3_BETA_URL: http://agent:8080
+      AGENT_INTEROP_SECRET: ${AGENT_INTEROP_SECRET:-}
       FORK_HANGAR_SOCKET: /sessions/hangar.sock
       SELF_HOSTED_WEBHOOK_HMAC_SECRET: ${SELF_HOSTED_WEBHOOK_HMAC_SECRET:-}
       # Receivers on the Mac only; scrapes keep the private-address guard.
@@ -188,6 +191,23 @@ services:
     mem_limit: 1g
     volumes:
       - sandbox-sock:/sandbox
+    restart: unless-stopped
+
+  # /v2/agent (PLAN.md Phase 15, D8): plan, search, scrape, merge with the
+  # local model, through our own API. Backend network only.
+  agent:
+    build: apps/agent-service
+    environment:
+      FIRECRAWL_URL: http://api:3002
+      REDIS_URL: redis://redis:6379
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-}
+      MODEL_NAME: ${MODEL_NAME:-}
+      AGENT_INTEROP_SECRET: ${AGENT_INTEROP_SECRET:-}
+      SELF_HOSTED_WEBHOOK_HMAC_SECRET: ${SELF_HOSTED_WEBHOOK_HMAC_SECRET:-}
+      FORK_WEBHOOK_LOCAL_HOSTS: host.docker.internal
+    networks:
+      - backend
+    mem_limit: 256m
     restart: unless-stopped
 
   # Product and menu extraction (PLAN.md Phase 13): JSON-LD first, then the
