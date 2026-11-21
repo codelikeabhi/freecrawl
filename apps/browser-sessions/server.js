@@ -105,7 +105,10 @@ async function create(body, key) {
     `--user-data-dir=${userDataDir}`, "--headless=new", "--no-sandbox", "--disable-dev-shm-usage",
     "--no-first-run", "--no-default-browser-check", `--proxy-server=${EGRESS}`,
     "--window-size=1280,800", "about:blank",
-  ], { stdio: "ignore" });
+  ], { stdio: ["ignore", "ignore", "pipe"] });
+  // The end of Chromium's stderr, so a failed start says why.
+  let stderrTail = "";
+  proc.stderr.on("data", chunk => { stderrTail = (stderrTail + chunk).slice(-2000); });
 
   const s = {
     id, proc, port, token: crypto.randomBytes(24).toString("base64url"), status: "starting",
@@ -125,6 +128,7 @@ async function create(body, key) {
     s.wsPath = await devtoolsPath(port);
   } catch (error) {
     await stop(s);
+    console.error(`session ${id}: browser did not start\n${stderrTail}`);
     throw error;
   }
   s.status = "running";
