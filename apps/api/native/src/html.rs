@@ -1053,6 +1053,28 @@ pub fn post_process_markdown_text(markdown: &str) -> String {
   remove_skip_to_content_links(&out)
 }
 
+#[cfg(test)]
+mod fork_post_process_tests {
+  use super::post_process_markdown_text as pp;
+
+  #[test]
+  fn escapes_newlines_inside_link_text_only() {
+    assert_eq!(pp("[a\nb](https://x.dev)\nc"), "[a\\\nb](https://x.dev)\nc");
+    assert_eq!(
+      pp("[![i](s.png)\n\nTitle](https://x.dev)"),
+      "[![i](s.png)\\\n\\\nTitle](https://x.dev)"
+    );
+  }
+
+  #[test]
+  fn an_unclosed_bracket_does_not_leak() {
+    let md = "A `[4,9)` range.\n\nNext.\n\n[link](https://x.dev)\nEnd.";
+    assert_eq!(pp(md), md);
+    assert_eq!(pp("\\[a\nb\\](c)"), "\\[a\nb\\](c)");
+    assert_eq!(pp("[a [b](u)\nc"), "[a [b](u)\nc");
+  }
+}
+
 /// Process multi-line links in markdown.
 #[napi]
 pub async fn post_process_markdown(markdown: String) -> napi::Result<String> {
